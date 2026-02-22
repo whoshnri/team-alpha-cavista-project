@@ -48,7 +48,9 @@ export default function VitalThread() {
       setLoginLoading(true);
       try {
         const res = await fetch(`/api/gait/validate-magic-link?token=${token}`);
+        console.log("[Magic Link] Fetch status:", res.status);
         const data = await res.json();
+        console.log("[Magic Link] Response:", data);
         if (data.success) {
           localStorage.setItem('vitalthread_token', data.token);
           localStorage.setItem('vitalthread_user_id', data.userId);
@@ -99,9 +101,8 @@ export default function VitalThread() {
     const phoneNumber = formData.get('phone') as string;
     const password = formData.get('password') as string;
 
-    // will use a hook in production
     try {
-      const res = await fetch(`${API_BASE_URL}/api/auth/login`, {
+      const res = await fetch(`/api/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ phoneNumber, password })
