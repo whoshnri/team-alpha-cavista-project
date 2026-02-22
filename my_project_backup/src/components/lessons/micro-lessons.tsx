@@ -22,7 +22,7 @@ export function MicroLessons() {
   const fetchLesson = async (topic?: string) => {
     setLoading(true)
     try {
-      const res = await fetch(`${API_BASE_URL}/api/ai/lesson`, {
+      const res = await fetch(`/api/ai/lesson`, {
         method: 'POST',
         headers: API_HEADERS,
         body: JSON.stringify({ topic, userProfile: profile })

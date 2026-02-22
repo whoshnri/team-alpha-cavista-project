@@ -18,7 +18,7 @@ export function LabInterpreter() {
     if (!labText.trim()) return
     setLoading(true)
     try {
-      const res = await fetch(`${API_BASE_URL}/api/ai/lab`, {
+      const res = await fetch(`/api/ai/lab`, {
         method: 'POST',
         headers: API_HEADERS,
         body: JSON.stringify({ labText, userProfile: profile })

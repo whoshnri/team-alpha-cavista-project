@@ -1,6 +1,6 @@
 import Cookies from "js-cookie";
 
-export const API_BASE_URL = process.env.API_URL || "http://localhost:4000";
+export const API_BASE_URL = process.env.API_URL || "";
 
 export const getAuthHeaders = () => {
     const token = Cookies.get("preventiq_token");

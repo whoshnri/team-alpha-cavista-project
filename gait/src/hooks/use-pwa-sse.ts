@@ -2,13 +2,12 @@
 
 import { useEffect, useState } from "react"
 
-const API_BASE_URL = "http://localhost:4000"
 
 export function usePWASSE(userId: string | null) {
     useEffect(() => {
         if (!userId) return
 
-        const url = `${API_BASE_URL}/api/sse?userId=${userId}`
+        const url = `/api/sse?userId=${userId}`
         const eventSource = new EventSource(url)
 
         eventSource.addEventListener("PING_PWA", async (event) => {
@@ -17,7 +16,7 @@ export function usePWASSE(userId: string | null) {
                 const token = localStorage.getItem('vitalthread_token')
                 if (!token) return
 
-                await fetch(`${API_BASE_URL}/api/gait/pong/${userId}`, {
+                await fetch(`/api/gait/pong/${userId}`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',

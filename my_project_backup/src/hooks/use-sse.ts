@@ -14,7 +14,7 @@ export function useSSE(userId: string | undefined) {
     useEffect(() => {
         if (!userId) return
 
-        const url = `${API_BASE_URL.replace("/api", "")}/api/sse?userId=${userId}`
+        const url = `/api/sse?userId=${userId}`
         const eventSource = new EventSource(url)
 
         eventSource.onmessage = (event) => {

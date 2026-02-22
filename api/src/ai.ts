@@ -431,12 +431,21 @@ ai.post("/chat/vision-result", zValidator("json", VisionResultBodySchema), async
       apiKey: API_KEY,
     });
 
-    return c.json({
+    const response = {
       success: true,
       response: result.response,
       chatHistory: result.chatHistory,
       toolRequests: result.toolRequests,
-    });
+    };
+
+    // Background Persistence
+    const jwtPayload = c.get("jwtPayload") as any;
+    const userId = jwtPayload?.userId;
+    if (userId) {
+      persistChat(userId, "Vision scan complete.", result.response, result.category);
+    }
+
+    return c.json(response);
   } catch (err) {
     console.error("[/chat/vision-result] error:", err);
     return c.json({ success: false, error: "Failed to resume chat with vision result." }, 500);

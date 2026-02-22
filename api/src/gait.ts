@@ -174,9 +174,11 @@ gait.post("/pong/:userId", jwt({ secret: JWT_SECRET, alg: "HS256" }), async (c) 
 
 gait.get("/validate-magic-link", async (c) => {
     const token = c.req.query("token");
+    console.log(`[Gait] Validating magic link. Token present: ${!!token}`);
     if (!token) return c.json({ success: false, error: "Token missing" }, 400);
 
     const payload = decryptToken(token);
+    console.log(`[Gait] Decrypted payload:`, payload);
     if (!payload || !payload.userId || !payload.ts) {
         return c.json({ success: false, error: "Invalid or expired token" }, 401);
     }

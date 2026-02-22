@@ -2,6 +2,7 @@
 // Listens for capture_request events from SSE stream and manages the entire lifecycle
 
 import { useState, useCallback, useRef } from "react";
+import { ChatResponse } from "@/types/api";
 
 // ─────────────────────────────────────────────
 // TYPES
@@ -49,7 +50,7 @@ export type CaptureState =
 // HOOK
 // ─────────────────────────────────────────────
 
-export function useVisionCapture(token: string, apiBase = "") {
+export function useVisionCapture(token: string, apiBase = "", onAiResponse?: (data: ChatResponse) => void) {
   const [captureState, setCaptureState] = useState<CaptureState>({ status: "idle" });
   const threadIdRef = useRef<string | null>(null);
 
@@ -79,7 +80,7 @@ export function useVisionCapture(token: string, apiBase = "") {
     setCaptureState({ status: "idle" });
 
     // Tell the backend the user declined
-    await fetch(`${apiBase}/api/ai/chat/vision-result`, {
+    const res = await fetch(`${apiBase}/api/ai/chat/vision-result`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -95,6 +96,9 @@ export function useVisionCapture(token: string, apiBase = "") {
         },
       }),
     });
+
+    const data = await res.json();
+    if (onAiResponse) onAiResponse(data);
   }, [captureState, token, apiBase]);
 
   // ── User captured media — upload to vision API, then resume chat ──
@@ -129,7 +133,7 @@ export function useVisionCapture(token: string, apiBase = "") {
       setCaptureState({ status: "complete", result: visionResult, toolCallId });
 
       // Phase 4: Resume the chat with vision results
-      await fetch(`${apiBase}/api/ai/chat/vision-result`, {
+      const res = await fetch(`${apiBase}/api/ai/chat/vision-result`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -141,6 +145,9 @@ export function useVisionCapture(token: string, apiBase = "") {
           visionResult,
         }),
       });
+
+      const data = await res.json();
+      if (onAiResponse) onAiResponse(data);
     } catch (err: any) {
       setCaptureState({
         status: "error",

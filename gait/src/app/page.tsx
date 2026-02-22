@@ -11,7 +11,6 @@ import { CONFIG, startMonitoring, stopMonitoring, attemptSync, getQueue, injectP
 import { cn } from "@/lib/utils";
 import { usePWASSE } from "@/hooks/use-pwa-sse";
 
-const API_BASE_URL = "http://localhost:4000";
 
 export default function VitalThread() {
   const [userId, setUserId] = useState<string | null>(null);

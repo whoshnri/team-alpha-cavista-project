@@ -113,18 +113,21 @@ export function ChatWindow({ sessionId, onNewSession }: ChatWindowProps) {
   const [gaitSyncStatus, setGaitSyncStatus] = useState<'idle' | 'pending' | 'synced'>('idle')
   const [pendingGaitData, setPendingGaitData] = useState<{ originalMessage: string, chatHistory: Message[] } | null>(null)
 
-  const token = Cookies.get("preventiq_token") || ""
-  const visionCapture = useVisionCapture(token, API_BASE_URL)
-
-  const { lastEvent, setLastEvent } = useSSE(user?.id)
-  const prevSessionRef = useRef<string | null | undefined>(undefined)
-  const processToolRequestsRef = useRef<any>(null)
-  const fileInputRef = useRef<HTMLInputElement>(null)
-
   const welcomeMessage: UIMessage = {
     role: 'bot',
     content: `Hello ${user?.fullName?.split(' ')[0] ?? 'there'}! I'm your PreventIQ health assistant. I can analyze your symptoms, recommend checks, and find nearby clinics. How can I help you today?`
   }
+
+  const scrollRef = useRef<HTMLDivElement>(null)
+
+  const buildChatHistory = useCallback((): Message[] => {
+    return messages
+      .filter((m) => !m.metadata?.toolRequests)
+      .map((m, i, arr) => {
+        if (m.role === 'user') return { user: m.content, bot: arr[i + 1]?.role === 'bot' ? arr[i + 1].content : null }
+        return null
+      }).filter(Boolean) as Message[]
+  }, [messages, user])
 
   // Load session when sessionId changes
   useEffect(() => {
@@ -139,7 +142,7 @@ export function ChatWindow({ sessionId, onNewSession }: ChatWindowProps) {
     const loadSession = async () => {
       setLoadingHistory(true)
       try {
-        const res = await fetch(`${API_BASE_URL}/api/user/chats/${sessionId}`, { headers: getAuthHeaders() })
+        const res = await fetch(`/api/user/chats/${sessionId}`, { headers: getAuthHeaders() })
         const data = await res.json()
         if (data.success && data.session) {
           const loaded: UIMessage[] = data.session.messages.map((msg: any) => {
@@ -158,21 +161,46 @@ export function ChatWindow({ sessionId, onNewSession }: ChatWindowProps) {
       finally { setLoadingHistory(false) }
     }
     loadSession()
-  }, [sessionId, user])
+  }, [sessionId, user, welcomeMessage])
 
-  const scrollRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight
   }, [messages, clinicLoading])
 
-  const buildChatHistory = useCallback((): Message[] => {
-    return messages
-      .filter((m) => !m.metadata?.toolRequests)
-      .map((m, i, arr) => {
-        if (m.role === 'user') return { user: m.content, bot: arr[i + 1]?.role === 'bot' ? arr[i + 1].content : null }
-        return null
-      }).filter(Boolean) as Message[]
-  }, [messages])
+  const token = Cookies.get("preventiq_token") || ""
+
+  const handleAiResponse = useCallback(async (data: ChatResponse, originalMessage?: string) => {
+    if (data.success) {
+      const botMsg: UIMessage = {
+        role: 'bot',
+        content: data.response,
+        metadata: {
+          lab: data.labInterpretation,
+          risk: data.riskScores,
+          lesson: data.microLesson,
+          escalation: data.escalation,
+          toolRequests: data.toolRequests,
+        }
+      }
+      setMessages(prev => [...prev, botMsg])
+
+      // Process any tool requests from the AI
+      if (data.toolRequests && data.toolRequests.length > 0) {
+        const history = buildChatHistory()
+        await processToolRequestsRef.current?.(data.toolRequests, originalMessage || "Vision scan complete.", history)
+      }
+    } else {
+      setMessages(prev => [...prev, { role: 'bot', content: "Sorry, I encountered an error: " + data.error }])
+    }
+  }, [buildChatHistory])
+
+  const visionCapture = useVisionCapture(token, API_BASE_URL, handleAiResponse)
+
+  const { lastEvent, setLastEvent } = useSSE(user?.id)
+  const prevSessionRef = useRef<string | null | undefined>(undefined)
+  const processToolRequestsRef = useRef<any>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
 
 
   // ─── PERMISSION PROMPT HELPER ──────────────────
@@ -263,7 +291,7 @@ export function ChatWindow({ sessionId, onNewSession }: ChatWindowProps) {
 
     const persistToolMessage = (content: string) => {
       // Fire-and-forget: save to the user's active chat session
-      fetch(`${API_BASE_URL}/api/user/chats/active/messages`, {
+      fetch(`/api/user/chats/active/messages`, {
         method: 'POST',
         headers: getAuthHeaders(),
         body: JSON.stringify({ content, sender: 'AI' })
@@ -274,7 +302,7 @@ export function ChatWindow({ sessionId, onNewSession }: ChatWindowProps) {
       const params = new URLSearchParams({
         lat: lat.toString(), lng: lng.toString(), radius: '5000'
       })
-      const res = await fetch(`${API_BASE_URL}/api/clinics/nearby?${params}`, { headers: getAuthHeaders() })
+      const res = await fetch(`/api/clinics/nearby?${params}`, { headers: getAuthHeaders() })
       const data = await res.json()
 
       if (data.success && data.clinics?.length > 0) {
@@ -327,7 +355,7 @@ export function ChatWindow({ sessionId, onNewSession }: ChatWindowProps) {
     }])
 
     const persistToolMessage = (content: string) => {
-      fetch(`${API_BASE_URL}/api/user/chats/active/messages`, {
+      fetch(`/api/user/chats/active/messages`, {
         method: 'POST',
         headers: getAuthHeaders(),
         body: JSON.stringify({ content, sender: 'AI' })
@@ -335,7 +363,7 @@ export function ChatWindow({ sessionId, onNewSession }: ChatWindowProps) {
     }
 
     try {
-      const res = await fetch(`${API_BASE_URL}/api/gait/${user.id}/recent`, {
+      const res = await fetch(`/api/gait/${user.id}/recent`, {
         headers: getAuthHeaders()
       })
       const gaitData = await res.json()
@@ -350,7 +378,7 @@ export function ChatWindow({ sessionId, onNewSession }: ChatWindowProps) {
       const controller = new AbortController()
       const timeoutId = setTimeout(() => controller.abort(), 60000)
 
-      const aiRes = await fetch(`${API_BASE_URL}/api/ai/chat`, {
+      const aiRes = await fetch(`/api/ai/chat`, {
         method: 'POST',
         headers: getAuthHeaders(),
         signal: controller.signal,
@@ -364,33 +392,9 @@ export function ChatWindow({ sessionId, onNewSession }: ChatWindowProps) {
       clearTimeout(timeoutId)
 
       const data: ChatResponse = await aiRes.json()
-      if (data.success) {
-        // Remove the "analyzing" status
-        setMessages(prev => {
-          const filtered = prev.filter(m => m.content !== "🚶 Analyzing your recent movement and gait activity...")
-          return [...filtered, {
-            role: 'bot',
-            content: data.response,
-            metadata: {
-              lab: data.labInterpretation,
-              risk: data.riskScores,
-              lesson: data.microLesson,
-              escalation: data.escalation,
-              toolRequests: data.toolRequests,
-            }
-          }]
-        })
-
-        // Persist the analysis
-        persistToolMessage(data.response)
-
-        // RESPONSE LOOP: AI might now request clinics after seeing gait issues
-        if (data.toolRequests && data.toolRequests.length > 0) {
-          await processToolRequestsRef.current?.(data.toolRequests, originalMessage, chatHistory)
-        }
-      } else {
-        throw new Error(data.error || "Failed to analyze gait")
-      }
+      // Remove the "analyzing" status
+      setMessages(prev => prev.filter(m => m.content !== "🚶 Analyzing your recent movement and gait activity..."))
+      await handleAiResponse(data, originalMessage)
     } catch (err: any) {
       setMessages(prev => {
         const filtered = prev.filter(m => m.content !== "🚶 Analyzing your recent movement and gait activity...")
@@ -430,7 +434,7 @@ export function ChatWindow({ sessionId, onNewSession }: ChatWindowProps) {
           }
 
           try {
-            const pingRes = await fetch(`${API_BASE_URL}/api/gait/ping/${user.id}`, {
+            const pingRes = await fetch(`/api/gait/ping/${user.id}`, {
               method: 'POST',
               headers: getAuthHeaders()
             })
@@ -516,7 +520,7 @@ export function ChatWindow({ sessionId, onNewSession }: ChatWindowProps) {
       const controller = new AbortController()
       const timeoutId = setTimeout(() => controller.abort(), 60000)
 
-      const res = await fetch(`${API_BASE_URL}/api/ai/chat`, {
+      const res = await fetch(`/api/ai/chat`, {
         method: 'POST',
         headers: getAuthHeaders(),
         signal: controller.signal,
@@ -525,27 +529,7 @@ export function ChatWindow({ sessionId, onNewSession }: ChatWindowProps) {
       clearTimeout(timeoutId)
 
       const data: ChatResponse = await res.json()
-      if (data.success) {
-        const botMsg: UIMessage = {
-          role: 'bot',
-          content: data.response,
-          metadata: {
-            lab: data.labInterpretation,
-            risk: data.riskScores,
-            lesson: data.microLesson,
-            escalation: data.escalation,
-            toolRequests: data.toolRequests,
-          }
-        }
-        setMessages(prev => [...prev, botMsg])
-
-        // Process any tool requests from the AI
-        if (data.toolRequests && data.toolRequests.length > 0) {
-          await processToolRequests(data.toolRequests, currentInput, chatHistory)
-        }
-      } else {
-        throw new Error(data.error || "Failed to get response")
-      }
+      await handleAiResponse(data, currentInput)
     } catch (err: any) {
       setMessages(prev => [...prev, { role: 'bot', content: "Sorry, I encountered an error: " + err.message }])
     } finally {
@@ -603,7 +587,7 @@ export function ChatWindow({ sessionId, onNewSession }: ChatWindowProps) {
       const controller = new AbortController()
       const timeoutId = setTimeout(() => controller.abort(), 60000)
 
-      const res = await fetch(`${API_BASE_URL}/api/ai/chat`, {
+      const res = await fetch(`/api/ai/chat`, {
         method: 'POST',
         headers: getAuthHeaders(),
         signal: controller.signal,
@@ -617,26 +601,7 @@ export function ChatWindow({ sessionId, onNewSession }: ChatWindowProps) {
       clearTimeout(timeoutId)
 
       const data: ChatResponse = await res.json()
-      if (data.success) {
-        setMessages(prev => [...prev, {
-          role: 'bot', content: data.response,
-          metadata: {
-            lab: data.labInterpretation,
-            escalation: data.escalation,
-            toolRequests: data.toolRequests,
-          }
-        }])
-
-        // ─── RESPONSE LOOP: Process any follow-up tool requests ───
-        // The AI may request nearby_clinics after analyzing vitals
-        // (e.g. "elevated heart rate — you should see a doctor")
-        if (data.toolRequests && data.toolRequests.length > 0) {
-          const chatHistory = toolState.chatHistory
-          await processToolRequests(data.toolRequests, toolState.originalMessage, chatHistory)
-        }
-      } else {
-        throw new Error(data.error || "Failed to analyze vitals")
-      }
+      await handleAiResponse(data, toolState.originalMessage)
     } catch (err: any) {
       setMessages(prev => [...prev, {
         role: 'bot', content: "I received your vitals data but had trouble analyzing it. Please try again."
@@ -665,7 +630,7 @@ export function ChatWindow({ sessionId, onNewSession }: ChatWindowProps) {
       const controller = new AbortController()
       const timeoutId = setTimeout(() => controller.abort(), 60000)
 
-      const res = await fetch(`${API_BASE_URL}/api/ai/chat`, {
+      const res = await fetch(`/api/ai/chat`, {
         method: 'POST',
         headers: getAuthHeaders(),
         signal: controller.signal,
@@ -680,21 +645,7 @@ export function ChatWindow({ sessionId, onNewSession }: ChatWindowProps) {
       clearTimeout(timeoutId)
 
       const data: ChatResponse = await res.json()
-      if (data.success) {
-        setMessages(prev => [...prev, {
-          role: 'bot', content: data.response,
-          metadata: {
-            lab: data.labInterpretation,
-            escalation: data.escalation,
-            toolRequests: data.toolRequests,
-          }
-        }])
-        if (data.toolRequests && data.toolRequests.length > 0) {
-          await processToolRequests(data.toolRequests, originalMessage, chatHistory)
-        }
-      } else {
-        throw new Error(data.error || "Failed to analyze image")
-      }
+      await handleAiResponse(data, originalMessage)
     } catch (err: any) {
       setMessages(prev => [...prev, {
         role: 'bot', content: "I received your photo but had trouble analyzing it. Please try again."

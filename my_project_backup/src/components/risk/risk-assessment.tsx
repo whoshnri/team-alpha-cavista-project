@@ -15,7 +15,7 @@ export function RiskAssessment() {
   const fetchRisk = async () => {
     setLoading(true)
     try {
-      const res = await fetch(`${API_BASE_URL}/api/ai/risk`, {
+      const res = await fetch(`/api/ai/risk`, {
         method: 'POST',
         headers: API_HEADERS,
         body: JSON.stringify({ userProfile: profile })

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { UserProfile } from '@/types/api'
-import { API_BASE_URL, getAuthHeaders } from '@/lib/api-config'
+import { getAuthHeaders } from '@/lib/api-config'
 import Cookies from "js-cookie"
 import { useRouter } from 'next/navigation'
 
@@ -30,7 +30,7 @@ export function useProfile() {
     }
 
     try {
-      const res = await fetch(`${API_BASE_URL}/api/user/profile`, {
+      const res = await fetch(`/api/user/profile`, {
         headers: getAuthHeaders()
       })
       const data = await res.json()
@@ -85,7 +85,7 @@ export function useProfile() {
     if (!token) return
 
     try {
-      const res = await fetch(`${API_BASE_URL}/api/user/chats`, {
+      const res = await fetch(`/api/user/chats`, {
         headers: getAuthHeaders()
       })
       const data = await res.json()
@@ -109,7 +109,7 @@ export function useProfile() {
 
   const updateProfile = async (updates: Partial<UserProfile>) => {
     try {
-      const res = await fetch(`${API_BASE_URL}/api/user/profile`, {
+      const res = await fetch(`/api/user/profile`, {
         method: 'PATCH',
         headers: getAuthHeaders(),
         body: JSON.stringify(updates)

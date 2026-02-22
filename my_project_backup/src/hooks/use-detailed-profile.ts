@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback } from 'react'
-import { API_BASE_URL, getAuthHeaders } from '@/lib/api-config'
+import {  getAuthHeaders } from '@/lib/api-config'
 import Cookies from "js-cookie"
 
 export interface DetailedProfile {
@@ -50,7 +50,7 @@ export function useDetailedProfile() {
 
         try {
             setLoading(true)
-            const res = await fetch(`${API_BASE_URL}/api/user/health-profile/detailed`, {
+            const res = await fetch(`/api/user/health-profile/detailed`, {
                 headers: getAuthHeaders()
             })
             const result = await res.json()
