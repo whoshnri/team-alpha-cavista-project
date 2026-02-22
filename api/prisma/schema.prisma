@@ -1,0 +1,575 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+  PREFER_NOT_TO_SAY
+}
+
+enum Language {
+  ENGLISH
+  YORUBA
+  IGBO
+  HAUSA
+  PIDGIN
+  FRENCH
+}
+
+enum RiskLevel {
+  LOW
+  MODERATE
+  HIGH
+  CRITICAL
+}
+
+enum BiomarkerStatus {
+  NORMAL
+  BORDERLINE
+  CONCERNING
+}
+
+enum NotificationChannel {
+  WHATSAPP
+  SMS
+  EMAIL
+  PUSH
+}
+
+enum AppointmentStatus {
+  SCHEDULED
+  COMPLETED
+  MISSED
+  CANCELLED
+}
+
+enum ChallengeStatus {
+  ACTIVE
+  COMPLETED
+  FAILED
+  ABANDONED
+}
+
+enum MessageSender {
+  USER
+  AI
+}
+
+enum EscalationStatus {
+  DETECTED
+  NOTIFIED
+  RESOLVED
+  FALSE_POSITIVE
+}
+
+
+
+model User {
+  id                String    @id @default(cuid())
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  fullName          String
+  email             String?   @unique
+  phoneNumber       String    @unique
+  whatsappId        String?   @unique
+  dateOfBirth       DateTime
+  gender            Gender
+  preferredLanguage Language  @default(ENGLISH)
+  profileImageUrl   String?
+  passwordHash      String?
+
+  // Location
+  state             String?
+  lga               String?
+  latitude          Float?
+  longitude         Float?
+
+  isActive          Boolean   @default(true)
+  isVerified        Boolean   @default(false)
+  lastActiveAt      DateTime?
+
+  // Relations
+  healthProfile     HealthProfile?
+  labResults        LabResult[]
+  vitals            Vital[]
+  riskAssessments   RiskAssessment[]
+  microLessons      UserMicroLesson[]
+  challenges        UserChallenge[]
+  chatSessions      ChatSession[]
+  appointments      Appointment[]
+  notifications     Notification[]
+  escalations       Escalation[]
+  achievements      UserAchievement[]
+  gamificationStats GamificationStats?
+  gaitLogs          GaitLog[]
+
+  @@map("users")
+}
+
+// ─────────────────────────────────────────────
+// HEALTH PROFILE
+// ─────────────────────────────────────────────
+
+model HealthProfile {
+  id                    String   @id @default(cuid())
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  userId                String   @unique
+  user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  heightCm              Float?
+  weightKg              Float?
+  bmi                   Float?
+
+  existingConditions    String[]
+  familyHistory         String[]
+  currentMedications    String[]
+  allergies             String[]
+  bloodGroup            String?
+
+  smokingStatus         String?
+  alcoholUse            String?
+  physicalActivityLevel String?
+  dietType              String?
+  averageSleepHours     Float?
+  stressLevel           Int?
+
+  occupation            String?
+  incomeLevel           String?
+
+  // Heart rate baseline
+  hrBaseline            Float?
+  hrStdDev              Float?
+  hrReadingCount        Int      @default(0)
+  
+  // HRV baseline  
+  hrvBaseline           Float?
+  hrvStdDev             Float?
+  
+  // Gait baselines
+  gaitRegularityBase    Float?
+  gaitRegularityStdDev  Float?
+  fatigueIndexBase      Float?
+  stepsPerWindowBase    Float?
+  
+  // Respiratory
+  respiratoryBase       Float?
+  respiratoryStdDev     Float?
+  
+  // Activity profile
+  dominantActivity      String?
+  avgDailySteps         Float?
+  avgDailyCalories      Float?
+  
+  // Risk flags derived from trends
+  chronicFatigueRisk    Boolean  @default(false)
+  elevatedHRRisk        Boolean  @default(false)
+  lowHRVRisk            Boolean  @default(false)
+  sedentaryRisk         Boolean  @default(false)
+  
+  // Trend directions — "improving" | "stable" | "declining"
+  gaitTrend             String?
+  hrTrend               String?
+  hrvTrend              String?
+  
+  // Meta
+  lastRecalibrated      DateTime?
+  totalScans            Int      @default(0)
+  profileConfidence     Float    @default(0) // 0-1, grows with more data
+
+  labMetadata           Json?    @default("{}")
+
+  @@map("health_profiles")
+}
+
+// ─────────────────────────────────────────────
+// LAB RESULTS
+// ─────────────────────────────────────────────
+
+model LabResult {
+  id                   String          @id @default(cuid())
+  createdAt            DateTime        @default(now())
+
+  userId               String
+  user                 User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  rawText              String?
+  documentUrl          String?
+  testName             String
+  testedAt             DateTime?
+  labName              String?
+
+  plainLanguageSummary String?
+  overallStatus        BiomarkerStatus @default(NORMAL)
+  aiRecommendations    String[]
+  interpretedAt        DateTime?
+
+  biomarkers           Biomarker[]
+
+  @@map("lab_results")
+}
+
+model Biomarker {
+  id           String          @id @default(cuid())
+
+  labResultId  String
+  labResult    LabResult       @relation(fields: [labResultId], references: [id], onDelete: Cascade)
+
+  name         String
+  value        Float
+  unit         String
+  referenceMin Float?
+  referenceMax Float?
+  status       BiomarkerStatus @default(NORMAL)
+  flagNote     String?
+
+  @@map("biomarkers")
+}
+
+// ─────────────────────────────────────────────
+// VITALS
+// ─────────────────────────────────────────────
+
+model Vital {
+  id              String   @id @default(cuid())
+  recordedAt      DateTime @default(now())
+
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  systolicBP      Int?
+  diastolicBP     Int?
+  heartRateBpm    Int?
+  bloodOxygenPct  Float?
+  temperatureC    Float?
+  weightKg        Float?
+  bloodGlucose    Float?
+  respiratoryRate Int?
+
+  source          String   @default("self_report")
+  deviceId        String?
+  notes           String?
+
+  @@map("vitals")
+}
+
+// ─────────────────────────────────────────────
+// RISK ASSESSMENT
+// ─────────────────────────────────────────────
+
+model RiskAssessment {
+  id                 String    @id @default(cuid())
+  createdAt          DateTime  @default(now())
+
+  userId             String
+  user               User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  overallRiskScore   Float
+  overallRiskLevel   RiskLevel
+
+  diabetesRisk       Float?
+  hypertensionRisk   Float?
+  cardiovascularRisk Float?
+
+  modelVersion       String    @default("1.0.0")
+  featuresUsed       String[]
+  confidenceScore    Float?
+
+  topRiskFactors     String[]
+  priorityActions    String[]
+  nextAssessmentDue  DateTime?
+
+  @@map("risk_assessments")
+}
+
+// ─────────────────────────────────────────────
+// MICRO-LESSONS
+// ─────────────────────────────────────────────
+
+model MicroLesson {
+  id           String            @id @default(cuid())
+  createdAt    DateTime          @default(now())
+
+  title        String
+  content      String
+  category     String
+  tags         String[]
+  language     Language          @default(ENGLISH)
+  readTimeSecs Int               @default(45)
+  sourceUrl    String?
+
+  userLessons  UserMicroLesson[]
+
+  @@map("micro_lessons")
+}
+
+model UserMicroLesson {
+  id          String      @id @default(cuid())
+
+  userId      String
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lessonId    String
+  lesson      MicroLesson @relation(fields: [lessonId], references: [id])
+
+  sentAt      DateTime    @default(now())
+  openedAt    DateTime?
+  completedAt DateTime?
+  rating      Int?
+  wasHelpful  Boolean?
+
+  @@unique([userId, lessonId])
+  @@map("user_micro_lessons")
+}
+
+// ─────────────────────────────────────────────
+// GAMIFICATION
+// ─────────────────────────────────────────────
+
+model GamificationStats {
+  id            String   @id @default(cuid())
+  updatedAt     DateTime @updatedAt
+
+  userId        String   @unique
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  totalPoints   Int      @default(0)
+  currentStreak Int      @default(0)
+  longestStreak Int      @default(0)
+  level         Int      @default(1)
+  badgesEarned  Int      @default(0)
+
+  @@map("gamification_stats")
+}
+
+model Challenge {
+  id             String          @id @default(cuid())
+  createdAt      DateTime        @default(now())
+
+  title          String
+  description    String
+  category       String
+  durationDays   Int
+  targetMetric   String
+  targetValue    Float
+  pointsReward   Int             @default(50)
+  badgeImageUrl  String?
+
+  userChallenges UserChallenge[]
+
+  @@map("challenges")
+}
+
+model UserChallenge {
+  id           String          @id @default(cuid())
+
+  userId       String
+  user         User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  challengeId  String
+  challenge    Challenge       @relation(fields: [challengeId], references: [id])
+
+  startedAt    DateTime        @default(now())
+  completedAt  DateTime?
+  status       ChallengeStatus @default(ACTIVE)
+  currentValue Float           @default(0)
+  progressPct  Float           @default(0)
+  pointsEarned Int             @default(0)
+  sharedAt     DateTime?
+
+  @@unique([userId, challengeId])
+  @@map("user_challenges")
+}
+
+model Achievement {
+  id               String            @id @default(cuid())
+
+  name             String            @unique
+  description      String
+  iconUrl          String?
+  pointsValue      Int               @default(100)
+  triggerLogic     String?
+
+  userAchievements UserAchievement[]
+
+  @@map("achievements")
+}
+
+model UserAchievement {
+  id            String      @id @default(cuid())
+
+  userId        String
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  achievementId String
+  achievement   Achievement @relation(fields: [achievementId], references: [id])
+
+  earnedAt      DateTime    @default(now())
+
+  @@unique([userId, achievementId])
+  @@map("user_achievements")
+}
+
+// ─────────────────────────────────────────────
+// CHAT
+// ─────────────────────────────────────────────
+
+model ChatSession {
+  id         String              @id @default(cuid())
+  startedAt  DateTime            @default(now())
+  endedAt    DateTime?
+
+  userId     String
+  user       User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  channel    NotificationChannel @default(WHATSAPP)
+
+  messages   ChatMessage[]
+  escalation Escalation?
+
+  @@map("chat_sessions")
+}
+
+model ChatMessage {
+  id                      String        @id @default(cuid())
+  createdAt               DateTime      @default(now())
+
+  sessionId               String
+  session                 ChatSession   @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  sender                  MessageSender
+  content                 String
+  language                Language      @default(ENGLISH)
+  translatedFrom          Language?
+
+  ragSourceDocs           String[]
+  modelUsed               String?
+  confidenceScore         Float?
+
+  containsEmergencySignal Boolean       @default(false)
+  wasEscalated            Boolean       @default(false)
+
+  @@map("chat_messages")
+}
+
+// ─────────────────────────────────────────────
+// ESCALATION
+// ─────────────────────────────────────────────
+
+model Escalation {
+  id               String           @id @default(cuid())
+  createdAt        DateTime         @default(now())
+
+  userId           String
+  user             User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sessionId        String?          @unique
+  session          ChatSession?     @relation(fields: [sessionId], references: [id])
+
+  triggerMessage   String
+  detectedKeywords String[]
+  status           EscalationStatus @default(DETECTED)
+  nearestClinicId  String?
+  clinicName       String?
+  clinicAddress    String?
+  clinicPhone      String?
+  resolvedAt       DateTime?
+  resolvedNote     String?
+
+  @@map("escalations")
+}
+
+// ─────────────────────────────────────────────
+// APPOINTMENTS
+// ─────────────────────────────────────────────
+
+model Appointment {
+  id              String            @id @default(cuid())
+  createdAt       DateTime          @default(now())
+
+  userId          String
+  user            User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  facilityName    String
+  facilityAddress String?
+  facilityPhone   String?
+  appointmentType String
+  scheduledAt     DateTime
+  status          AppointmentStatus @default(SCHEDULED)
+  reminderSentAt  DateTime?
+  notes           String?
+  completedAt     DateTime?
+  outcome         String?
+
+  @@map("appointments")
+}
+
+// ─────────────────────────────────────────────
+// NOTIFICATIONS
+// ─────────────────────────────────────────────
+
+model Notification {
+  id          String              @id @default(cuid())
+  createdAt   DateTime            @default(now())
+
+  userId      String
+  user        User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  channel     NotificationChannel
+  title       String
+  body        String
+  sentAt      DateTime?
+  deliveredAt DateTime?
+  openedAt    DateTime?
+  type        String
+
+  @@map("notifications")
+}
+
+// ─────────────────────────────────────────────
+// GAIT LOGS (PWA accelerometer data)
+// ─────────────────────────────────────────────
+
+model GaitLog {
+  id                  String   @id @default(cuid())
+  createdAt           DateTime @default(now())
+
+  userId              String
+  user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  timestamp           DateTime
+  windowDurationSec   Int?
+  sampleCount         Int?
+  activity            String?
+  stepsEstimated      Int?
+  dominantAxis        String?
+  meanMagnitude       Float?
+  stdDevMagnitude     Float?
+  gaitRegularityScore Float?
+  fatigueIndex        Float?
+  estimatedCalories   Float?
+  movementDetected    Boolean  @default(false)
+  prolongedStillness  Boolean  @default(false)
+  highVariability     Boolean  @default(false)
+  irregularGait       Boolean  @default(false)
+  xMean               Float?
+  yMean               Float?
+  zMean               Float?
+  xVariance           Float?
+  yVariance           Float?
+  zVariance           Float?
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@map("gait_logs")
+}
