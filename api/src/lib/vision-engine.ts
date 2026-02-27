@@ -502,7 +502,7 @@ function buildMainPrompt(config: AnalysisConfig): string {
 
 function buildFundusPrompt(config: AnalysisConfig, mediaInstruction: string): string {
   return `
-You are a clinical ophthalmology screening assistant for PreventIQ, a preventive health platform serving urban Nigerians.
+You are a clinical ophthalmology screening assistant for NIMI, a preventive health platform serving urban Nigerians.
 
 ${mediaInstruction}
 
@@ -549,7 +549,7 @@ RULES:
 
 function buildSkinPrompt(config: AnalysisConfig, mediaInstruction: string): string {
   return `
-You are a dermatology screening assistant for PreventIQ, serving urban Nigerians.
+You are a dermatology screening assistant for NIMI, serving urban Nigerians.
 
 ${mediaInstruction}
 
@@ -602,7 +602,7 @@ RULES:
 
 function buildGeneralPrompt(config: AnalysisConfig, mediaInstruction: string): string {
   return `
-You are a health-focused visual analysis assistant for PreventIQ.
+You are a health-focused visual analysis assistant for NIMI.
 
 ${mediaInstruction}
 

@@ -44,15 +44,6 @@ export type LabInterpretation = {
   recommendations: string[];
 };
 
-// MICRO-LESSON
-
-export type MicroLesson = {
-  title: string;
-  content: string;
-  category: string;
-  readTimeSecs: number;
-  sourceNote: string;
-};
 
 // ESCALATION
 
@@ -66,12 +57,12 @@ export type EscalationResult = {
 // TOOL USE (AI ↔ Frontend)
 
 export type ToolRequest = {
-  tool: "heart_rate_scan" | "nearby_clinics" | "gait_analysis" | "capture_fundus" | "capture_skin" | "capture_general";
+  tool: "heart_rate_scan" | "nearby_clinics" | "gait_analysis";
   reason: string;
 };
 
 export type ToolResult = {
-  tool: "heart_rate_scan" | "nearby_clinics" | "gait_analysis" | "capture_fundus" | "capture_skin" | "capture_general";
+  tool: "heart_rate_scan" | "nearby_clinics" | "gait_analysis";
   data: Record<string, any>;
 };
 
@@ -87,8 +78,6 @@ export type AgentState = {
   labInterpretation: LabInterpretation | null;
   riskScores: RiskScores | null;
   escalation: EscalationResult | null;
-  microLesson: MicroLesson | null;
-  visionResult: any | null;
 
   toolRequests: ToolRequest[];
   toolResults: ToolResult[];

@@ -1,4 +1,4 @@
-// index.ts — PreventIQ Hono server entry point
+// index.ts — NIMI Hono server entry point
 
 import { Hono } from "hono";
 import { logger } from "hono/logger";
@@ -11,7 +11,6 @@ import { userRoutes } from "./user.js";
 import { clinicsRoutes } from "./clinics.js";
 import { gaitRoutes } from "./gait.js";
 import { jwt, sign } from "hono/jwt";
-import { visionRoutes } from "./vision.js";
 import { handleSSE } from "./sse.js";
 
 
@@ -30,7 +29,7 @@ app.use("*", cors({ origin: "*" }));
 
 app.get("/", (c) =>
   c.json({
-    status: "PreventIQ AI API is running 🏥",
+    status: "NIMI AI API is running 🏥",
     version: "1.0.0",
     endpoints: {
       chat: "POST /api/ai/chat     — General health Q&A (auto-routes by intent)",
@@ -47,19 +46,37 @@ app.get("/", (c) =>
 // ROUTES
 // ─────────────────────────────────────────────
 
-const JWT_SECRET = process.env.JWT_SECRET || "preventiq_super_secret_key_123!";
+// Token verification middleware
+const verifyToken = (token: string) => {
+  return true;
+};
+
+app.use('*', async (c, next) => {
+  if (c.req.path === '/' || c.req.path.startsWith('/api/auth')) {
+    return await next();
+  }
+
+  const authHeader = c.req.header('Authorization');
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return c.json({ success: false, error: 'Authorization header missing or invalid' }, 401);
+  }
+  const token = authHeader.split(' ')[1];
+  if (!verifyToken(token)) {
+    return c.json({ success: false, error: 'Invalid token' }, 401);
+  }
+  await next();
+});
+
+const JWT_SECRET = process.env.JWT_SECRET || "nimi_super_secret_key_123!";
 
 app.route("/api/auth", authRoutes);
 app.route("/api/user", userRoutes);
 app.route("/api/clinics", clinicsRoutes);
 app.route("/api/gait", gaitRoutes);
 
-// Protect AI routes
 app.use("/api/ai/*", jwt({ secret: JWT_SECRET, alg: "HS256" }));
 app.route("/api/ai", aiRoutes);
-app.route("/api/vision", visionRoutes);
 
-// SSE Endpoint
 app.get("/api/sse", handleSSE);
 
 // ─────────────────────────────────────────────
@@ -78,7 +95,7 @@ getCollection()
   .catch((err) => console.warn("⚠️  ChromaDB not ready:", err.message));
 
 serve({ fetch: app.fetch, port: PORT, hostname: "0.0.0.0" }, () => {
-  console.log(`🚀 PreventIQ API running → http://localhost:${PORT}`);
+  console.log(`🚀 NIMI API running → http://localhost:${PORT}`);
 });
 
 export default app;

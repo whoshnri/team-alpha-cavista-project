@@ -108,14 +108,10 @@ model User {
   labResults        LabResult[]
   vitals            Vital[]
   riskAssessments   RiskAssessment[]
-  microLessons      UserMicroLesson[]
-  challenges        UserChallenge[]
   chatSessions      ChatSession[]
   appointments      Appointment[]
   notifications     Notification[]
   escalations       Escalation[]
-  achievements      UserAchievement[]
-  gamificationStats GamificationStats?
   gaitLogs          GaitLog[]
 
   @@map("users")
@@ -298,135 +294,6 @@ model RiskAssessment {
   @@map("risk_assessments")
 }
 
-// ─────────────────────────────────────────────
-// MICRO-LESSONS
-// ─────────────────────────────────────────────
-
-model MicroLesson {
-  id           String            @id @default(cuid())
-  createdAt    DateTime          @default(now())
-
-  title        String
-  content      String
-  category     String
-  tags         String[]
-  language     Language          @default(ENGLISH)
-  readTimeSecs Int               @default(45)
-  sourceUrl    String?
-
-  userLessons  UserMicroLesson[]
-
-  @@map("micro_lessons")
-}
-
-model UserMicroLesson {
-  id          String      @id @default(cuid())
-
-  userId      String
-  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
-  lessonId    String
-  lesson      MicroLesson @relation(fields: [lessonId], references: [id])
-
-  sentAt      DateTime    @default(now())
-  openedAt    DateTime?
-  completedAt DateTime?
-  rating      Int?
-  wasHelpful  Boolean?
-
-  @@unique([userId, lessonId])
-  @@map("user_micro_lessons")
-}
-
-// ─────────────────────────────────────────────
-// GAMIFICATION
-// ─────────────────────────────────────────────
-
-model GamificationStats {
-  id            String   @id @default(cuid())
-  updatedAt     DateTime @updatedAt
-
-  userId        String   @unique
-  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  totalPoints   Int      @default(0)
-  currentStreak Int      @default(0)
-  longestStreak Int      @default(0)
-  level         Int      @default(1)
-  badgesEarned  Int      @default(0)
-
-  @@map("gamification_stats")
-}
-
-model Challenge {
-  id             String          @id @default(cuid())
-  createdAt      DateTime        @default(now())
-
-  title          String
-  description    String
-  category       String
-  durationDays   Int
-  targetMetric   String
-  targetValue    Float
-  pointsReward   Int             @default(50)
-  badgeImageUrl  String?
-
-  userChallenges UserChallenge[]
-
-  @@map("challenges")
-}
-
-model UserChallenge {
-  id           String          @id @default(cuid())
-
-  userId       String
-  user         User            @relation(fields: [userId], references: [id], onDelete: Cascade)
-  challengeId  String
-  challenge    Challenge       @relation(fields: [challengeId], references: [id])
-
-  startedAt    DateTime        @default(now())
-  completedAt  DateTime?
-  status       ChallengeStatus @default(ACTIVE)
-  currentValue Float           @default(0)
-  progressPct  Float           @default(0)
-  pointsEarned Int             @default(0)
-  sharedAt     DateTime?
-
-  @@unique([userId, challengeId])
-  @@map("user_challenges")
-}
-
-model Achievement {
-  id               String            @id @default(cuid())
-
-  name             String            @unique
-  description      String
-  iconUrl          String?
-  pointsValue      Int               @default(100)
-  triggerLogic     String?
-
-  userAchievements UserAchievement[]
-
-  @@map("achievements")
-}
-
-model UserAchievement {
-  id            String      @id @default(cuid())
-
-  userId        String
-  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
-  achievementId String
-  achievement   Achievement @relation(fields: [achievementId], references: [id])
-
-  earnedAt      DateTime    @default(now())
-
-  @@unique([userId, achievementId])
-  @@map("user_achievements")
-}
-
-// ─────────────────────────────────────────────
-// CHAT
-// ─────────────────────────────────────────────
-
 model ChatSession {
   id         String              @id @default(cuid())
   startedAt  DateTime            @default(now())
@@ -436,37 +303,13 @@ model ChatSession {
   user       User                @relation(fields: [userId], references: [id], onDelete: Cascade)
   channel    NotificationChannel @default(WHATSAPP)
 
-  messages   ChatMessage[]
+  messages   Json                @default("[]")
   escalation Escalation?
 
   @@map("chat_sessions")
 }
 
-model ChatMessage {
-  id                      String        @id @default(cuid())
-  createdAt               DateTime      @default(now())
 
-  sessionId               String
-  session                 ChatSession   @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-
-  sender                  MessageSender
-  content                 String
-  language                Language      @default(ENGLISH)
-  translatedFrom          Language?
-
-  ragSourceDocs           String[]
-  modelUsed               String?
-  confidenceScore         Float?
-
-  containsEmergencySignal Boolean       @default(false)
-  wasEscalated            Boolean       @default(false)
-
-  @@map("chat_messages")
-}
-
-// ─────────────────────────────────────────────
-// ESCALATION
-// ─────────────────────────────────────────────
 
 model Escalation {
   id               String           @id @default(cuid())

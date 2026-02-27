@@ -1,4 +1,4 @@
-// vision.ts — PreventIQ Multimodal Vision Routes
+// vision.ts — NIMI Multimodal Vision Routes
 // Supports: base64 images, video file uploads, multi-pass analysis with backtracking
 
 import { Hono } from "hono";
@@ -12,7 +12,7 @@ import {
 } from "./lib/vision-engine.js";
 
 const vision = new Hono();
-const JWT_SECRET = process.env.JWT_SECRET || "preventiq_super_secret_key_123!";
+const JWT_SECRET = process.env.JWT_SECRET || "nimi_super_secret_key_123!";
 
 // Protect all vision routes
 vision.use("/*", jwt({ secret: JWT_SECRET, alg: "HS256" }));

@@ -1,4 +1,4 @@
-// vector.ts — ChromaDB vector store for PreventIQ health knowledge base
+// vector.ts — ChromaDB vector store for NIMI health knowledge base
 
 import { ChromaClient, Collection, CloudClient } from "chromadb";
 import { HuggingFaceInferenceEmbeddings } from "@langchain/community/embeddings/hf";
@@ -15,7 +15,7 @@ export async function getCollection(): Promise<Collection> {
   });
 
   collection = await client.getOrCreateCollection({
-    name: "preventiq_health_kb",
+    name: "nimi_health_kb",
     metadata: { "hnsw:space": "cosine" },
   });
 

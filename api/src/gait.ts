@@ -9,7 +9,7 @@ import { encryptToken, decryptToken } from "./lib/crypto.js";
 import { sign } from "hono/jwt";
 
 const gait = new Hono();
-const JWT_SECRET = process.env.JWT_SECRET || "preventiq_super_secret_key_123!";
+const JWT_SECRET = process.env.JWT_SECRET || "nimi_super_secret_key_123!";
 
 // ─────────────────────────────────────────────
 // PUBLIC ENDPOINT: Create Gait Log (PWA)

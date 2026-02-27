@@ -3,9 +3,10 @@
 
 import { Hono } from "hono";
 import { jwt } from "hono/jwt";
+import { prisma } from "../prisma/client.js";
 
 const clinics = new Hono();
-const JWT_SECRET = process.env.JWT_SECRET || "preventiq_super_secret_key_123!";
+const JWT_SECRET = process.env.JWT_SECRET || "nimi_super_secret_key_123!";
 
 clinics.use("/*", jwt({ secret: JWT_SECRET, alg: "HS256" }));
 
@@ -293,8 +294,9 @@ clinics.get("/nearby", async (c) => {
     const lng = c.req.query("lng");
     const radius = c.req.query("radius");
     const openNow = c.req.query("open_now");
+    const chatSessionId = c.req.header("x-chat-session-id");
 
-    console.log(`[Clinics Route] GET /nearby — lat=${lat}, lng=${lng}, radius=${radius}, open_now=${openNow}`);
+    console.log(`[Clinics Route] GET /nearby — lat=${lat}, lng=${lng}, radius=${radius}, open_now=${openNow}, session=${chatSessionId ?? 'none'}`);
 
     if (!lat || !lng) {
         return c.json({ success: false, error: { message: "lat and lng are required", code: "MISSING_PARAMS" } }, 400);
@@ -304,6 +306,39 @@ clinics.get("/nearby", async (c) => {
         parseFloat(lat), parseFloat(lng),
         { radius: radius ? parseInt(radius) : 5000, openNow: openNow === "true" }
     );
+
+    // Persist clinic search result into the chat session JSON (fire-and-forget)
+    if (chatSessionId && result.success) {
+        (async () => {
+            try {
+                const session = await prisma.chatSession.findUnique({
+                    where: { id: chatSessionId },
+                });
+                if (!session) return;
+
+                const currentMessages = Array.isArray(session.messages) ? (session.messages as any[]) : [];
+                const updatedMessages = [...currentMessages, {
+                    role: 'tool_result',
+                    tool: 'nearby_clinics',
+                    data: {
+                        clinics: result.clinics,
+                        total_found: result.total_found,
+                        radius: result.meta?.radius_searched_m ?? 5000,
+                    },
+                    timestamp: new Date().toISOString(),
+                }];
+
+                await prisma.chatSession.update({
+                    where: { id: chatSessionId },
+                    data: { messages: updatedMessages }
+                });
+
+                console.log(`[Clinics Route] Persisted ${result.total_found} clinic results in session: ${chatSessionId}`);
+            } catch (err) {
+                console.error("[Clinics Route] Failed to persist clinic results:", err);
+            }
+        })();
+    }
 
     const status = result.success ? 200 : 500;
     console.log(`[Clinics Route] Responding with ${status} — ${result.total_found} clinics`);

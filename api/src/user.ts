@@ -5,7 +5,7 @@ import { prisma } from "../prisma/client.js";
 import { jwt } from "hono/jwt";
 
 const user = new Hono();
-const JWT_SECRET = process.env.JWT_SECRET || "preventiq_super_secret_key_123!";
+const JWT_SECRET = process.env.JWT_SECRET || "nimi_super_secret_key_123!";
 
 // Middleware to protect user routes
 user.use("/*", jwt({ secret: JWT_SECRET, alg: "HS256" }));
@@ -92,9 +92,6 @@ user.patch("/profile", zValidator("json", ProfileUpdateSchema), async (c) => {
     }
 });
 
-// ─────────────────────────────────────────────
-// GET /chats — Recent chat sessions for sidebar
-// ─────────────────────────────────────────────
 
 user.get("/chats", async (c) => {
     const payload = c.get("jwtPayload");
@@ -108,20 +105,20 @@ user.get("/chats", async (c) => {
             select: {
                 id: true,
                 startedAt: true,
-                messages: {
-                    where: { sender: "USER" },
-                    take: 1,
-                    orderBy: { createdAt: "asc" },
-                    select: { content: true },
-                },
+                messages: true,
             },
         });
 
-        const chats = sessions.map((s: any) => ({
-            id: s.id,
-            firstMessage: s.messages?.[0]?.content?.slice(0, 60) || "New conversation",
-            lastMessageAt: s.startedAt?.toISOString() || new Date().toISOString(),
-        }));
+        const chats = sessions.map((s: any) => {
+            const messages = Array.isArray(s.messages) ? s.messages : [];
+            const firstUserMessage = messages.find((m: any) => m.role === 'user')?.content || "New conversation";
+
+            return {
+                id: s.id,
+                firstMessage: firstUserMessage.slice(0, 60),
+                lastMessageAt: s.startedAt?.toISOString() || new Date().toISOString(),
+            };
+        });
 
         return c.json({ success: true, chats });
     } catch (err) {
@@ -139,85 +136,77 @@ user.get("/chats/:id", async (c) => {
     const userId = payload.userId;
     const sessionId = c.req.param("id");
 
+    console.log(`[GET /chats/:id] ──────────────────────────────────────`);
+    console.log(`[GET /chats/:id] Session: ${sessionId}, User: ${userId}`);
+
     try {
         const session = await prisma.chatSession.findFirst({
             where: { id: sessionId, userId },
             select: {
                 id: true,
                 startedAt: true,
-                messages: {
-                    orderBy: { createdAt: "asc" },
-                    select: {
-                        id: true,
-                        sender: true,
-                        content: true,
-                        createdAt: true,
-                    },
-                },
+                messages: true,
             },
         });
 
-        if (!session) return c.json({ success: false, error: "Session not found" }, 404);
+        if (!session) {
+            console.warn(`[GET /chats/:id] Session not found for user ${userId}`);
+            return c.json({ success: false, error: "Session not found" }, 404);
+        }
 
-        return c.json({ success: true, session });
+        const rawMessages = Array.isArray(session.messages) ? (session.messages as any[]) : [];
+        console.log(`[GET /chats/:id] Raw messages in DB: ${rawMessages.length}`);
+
+        // Log breakdown by role
+        const roleCounts = rawMessages.reduce((acc: Record<string, number>, m: any) => {
+            acc[m.role] = (acc[m.role] || 0) + 1;
+            return acc;
+        }, {});
+        console.log(`[GET /chats/:id] Breakdown:`, JSON.stringify(roleCounts));
+
+        // Log tool_result details
+        rawMessages.filter((m: any) => m.role === 'tool_result').forEach((m: any, i: number) => {
+            console.log(`[GET /chats/:id]   tool_result[${i}]: tool=${m.tool}, data_keys=${Object.keys(m.data || {}).join(',')}`);
+        });
+
+        const messages = rawMessages.map((m, idx) => {
+            // Handle tool_result messages (clinic searches, heart rate scans, etc.)
+            if (m.role === 'tool_result') {
+                return {
+                    id: `msg_${idx}`,
+                    sender: 'TOOL_RESULT',
+                    tool: m.tool,
+                    data: m.data,
+                    content: '',
+                    createdAt: m.timestamp || session.startedAt,
+                };
+            }
+
+            return {
+                id: `msg_${idx}`,
+                sender: m.role === 'assistant' ? 'AI' : 'USER',
+                content: m.content,
+                createdAt: m.timestamp || session.startedAt,
+            };
+        });
+
+        console.log(`[GET /chats/:id] Returning ${messages.length} mapped messages`);
+        console.log(`[GET /chats/:id] ──────────────────────────────────────`);
+
+        return c.json({
+            success: true,
+            session: {
+                ...session,
+                messages
+            }
+        });
     } catch (err) {
         console.error("[Chat Session Error]", err);
         return c.json({ success: false, error: "Failed to fetch chat session" }, 500);
     }
 });
 
-// ─────────────────────────────────────────────
-// POST /chats/:id/messages — Persist a tool-generated message
-// Frontend calls this to save messages not created by the AI
-// (e.g. clinic results, scan results)
-// ─────────────────────────────────────────────
 
-user.post("/chats/:id/messages", async (c) => {
-    const payload = c.get("jwtPayload");
-    const userId = payload.userId;
-    const sessionId = c.req.param("id");
-
-    try {
-        const body = await c.req.json();
-        const { content, sender } = body;
-
-        if (!content || !sender) {
-            return c.json({ success: false, error: "content and sender are required" }, 400);
-        }
-
-        // Support "active" as a shorthand for the user's latest open session
-        let session;
-        if (sessionId === 'active') {
-            session = await prisma.chatSession.findFirst({
-                where: { userId, endedAt: null },
-                orderBy: { startedAt: 'desc' }
-            });
-        } else {
-            session = await prisma.chatSession.findFirst({
-                where: { id: sessionId, userId }
-            });
-        }
-
-        if (!session) return c.json({ success: false, error: "No active session found" }, 404);
-
-        const message = await prisma.chatMessage.create({
-            data: {
-                sessionId: session.id,
-                sender: sender === 'USER' ? 'USER' : 'AI',
-                content,
-            }
-        });
-
-        return c.json({ success: true, messageId: message.id });
-    } catch (err) {
-        console.error("[Persist Tool Message Error]", err);
-        return c.json({ success: false, error: "Failed to save message" }, 500);
-    }
-});
-
-// ─────────────────────────────────────────────
-// GET /health-profile — Personal baseline and trends
-// ─────────────────────────────────────────────
 
 user.get("/health-profile", async (c) => {
     const payload = c.get("jwtPayload");
@@ -255,9 +244,6 @@ user.get("/health-profile", async (c) => {
     }
 });
 
-// ─────────────────────────────────────────────
-// GET /health-profile/detailed — Aggregated deep dive
-// ─────────────────────────────────────────────
 
 user.get("/health-profile/detailed", async (c) => {
     const payload = c.get("jwtPayload");

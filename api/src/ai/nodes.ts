@@ -1,4 +1,4 @@
-// nodes.ts — PreventIQ LangGraph nodes
+// nodes.ts — NIMI LangGraph nodes
 
 
 import { ChatGoogleGenerativeAI } from "@langchain/google-genai";
@@ -10,7 +10,6 @@ import type {
   LabInterpretation,
   RiskScores,
   EscalationResult,
-  MicroLesson,
 } from "./types.js";
 
 // ─────────────────────────────────────────────
@@ -62,7 +61,7 @@ export function makeEscalationNode(apiKey: string) {
     const structured = llm.withStructuredOutput(EscalationSchema);
 
     const prompt = `
-You are a medical emergency detection system for PreventIQ, a Nigerian health app.
+You are a medical emergency detection system for NIMI, a Nigerian health app.
 
 Analyze the user's message and determine if it signals a medical emergency.
 
@@ -100,7 +99,7 @@ const DiagnosticsSchema = z.object({
   code: z.number().int().describe("1 if definitive answer from knowledge base, 0 if uncertain"),
   answer: z.string().describe("Comprehensive health answer with breakdown and steps. Use markdown formatting."),
   toolRequests: z.array(z.object({
-    tool: z.enum(["heart_rate_scan", "nearby_clinics", "gait_analysis", "capture_fundus", "capture_skin", "capture_general"]).describe("The client-side tool to invoke"),
+    tool: z.enum(["heart_rate_scan", "nearby_clinics", "gait_analysis"]).describe("The client-side tool to invoke"),
     reason: z.string().describe("Brief explanation of WHY this tool would help the assessment"),
   })).default([]).describe("Tools the AI wants the frontend to invoke. Empty if no tools needed."),
 });
@@ -142,18 +141,9 @@ ${JSON.stringify(state.toolResults, null, 2)}
 IMPORTANT: Use this real-time vital data to enhance your assessment. Factor the heart rate, signal quality, and confidence into your analysis. Compare against the patient's profile and conditions.
     `.trim() : "";
 
-    const visionBlock = state.visionResult ? `
-### Image Analysis Result
-- **Status**: ${state.visionResult.success ? "Success" : "Failed/Uncertain"}
-- **Quality**: ${state.visionResult.screening?.imageQuality || "Unknown"}
-- **Reasoning**: ${state.visionResult.pipeline?.backtrackLog?.[0]?.reasoning || "N/A"}
-- **Summary**: "${state.visionResult.screening?.summary || state.visionResult.screening?.answer || JSON.stringify(state.visionResult.screening)}"
-
-IMPORTANT: Incorporate this visual information into your assessment. If the image quality is POOR or there was a "backtrack" (e.g. they provided a face instead of a retina), politely explain that you couldn't get a clear reading and state the reason (e.g. "it looks like a photo of your face instead of your eye"). Suggest how they can take a better photo based on the reasoning provided.
-    `.trim() : "";
 
     const SYSTEM = `
-You are **PreventIQ Diagnostics**, an advanced AI health assessment and recommendation engine for urban Nigerians.
+You are **NIMI Diagnostics**, an advanced AI health assessment and recommendation engine for urban Nigerians.
 
 ## Your Role
 You are a clinical-grade health reasoning system that:
@@ -161,17 +151,10 @@ You are a clinical-grade health reasoning system that:
 2. Speaks DIRECTLY to the patient (use "you", "your", "yours"). Never refer to them as "the patient".
 3. Provides clear next steps (NEVER self-medication).
 4. Requests our proprietary client-side diagnostic tools ONLY when they would improve your assessment.
-5. Regularly recommend that the user turns on their gait tracker (PWA motion logging) as it is beneficial for identifying and better understanding potential health issues they might face. If the user agrees, offer to help them with the process by calling to gait_analysis tool. Use simple terms like "checking how you walk" or "tracking your movement".
 6. **COMMUNICATION STYLE**: Use simple, "low-level" language centered on common experiences. Avoid technical jargon or complicated medical process descriptions. Speak like a helpful, clear-speaking health guide for a neighborhood clinic.
 7. **TOOL PRIVACY**: NEVER refer to tools by their technical names (e.g., "gait_analysis", "heart_rate_scan", "vision_analysis") in your chat responses. Instead, say things like "I can check your heart rate," "take a photo of your eye," or "see how you're walking."
 
 ## Internal Tools (Our Proprietary Diagnostics)
-1. "heart_rate_scan" — Request this for heart-related checks. Describe it as a "face scan" or "heart check".
-2. "gait_analysis" — Request this for walking or balance checks. Describe it as "checking how you walk".
-3. "nearby_clinics" — Request this ONLY when you recommend professional consultation. Describe it as "finding a clinic nearby".
-4. "capture_fundus" — Request this for checking the back of the eye. Describe it as "a photo of your eye".
-5. "capture_skin" — Request this for skin checks. Describe it as "a photo of your skin".
-6. "capture_general" — Request this for any other visual check. Describe it as "taking a photo".
 
 **CRITICAL RULES:**
 - **Integer Output**: Ensure the "code" field is a raw integer (1 or 0), not a string.
@@ -190,7 +173,6 @@ ${profileBlock}
 
 ${toolResultsBlock}
 
-${visionBlock}
 
 ### Health Knowledge Base Context
 ${context}
@@ -207,16 +189,18 @@ Analyze the message using ALL available context. If you see inaccuracies or need
 
     try {
       const result = await structured.invoke(messages);
+      const answerWithMetadata = result.answer + (result.toolRequests?.length ? `\n\n<!--METADATA:${JSON.stringify({ toolRequests: result.toolRequests })}-->` : "");
+
       const updatedCookie = [...state.cookie];
       if (updatedCookie.length > 0) {
         updatedCookie[updatedCookie.length - 1] = {
           ...updatedCookie[updatedCookie.length - 1],
-          bot: result.answer,
+          bot: answerWithMetadata,
         };
       }
-      console.log(`[Node: Diagnostics]Completed in ${Date.now() - start} ms | Tools requested: ${result.toolRequests?.length ?? 0} `);
+      console.log(`[Node: Diagnostics] Completed in ${Date.now() - start} ms | Tools requested: ${result.toolRequests?.length ?? 0}`);
       return {
-        currAnswer: result.answer,
+        currAnswer: answerWithMetadata,
         code: result.code,
         category: result.category,
         cookie: updatedCookie,
@@ -268,7 +252,7 @@ export function makeLabInterpreterNode(apiKey: string) {
     const structured = llm.withStructuredOutput(LabSchema);
 
     const prompt = `
-You are a medical lab result interpreter for PreventIQ, a Nigerian health app.
+You are a medical lab result interpreter for NIMI, a Nigerian health app.
 Your job is to explain lab results in simple, friendly language that any Nigerian patient can understand — no medical degree required.
 
 Use a traffic - light system:
@@ -307,10 +291,6 @@ Ensure all numerical values (value, referenceMin, referenceMax) are raw numbers,
   };
 }
 
-// ─────────────────────────────────────────────
-// NODE 4: RISK SCORE ASSESSMENT
-// ─────────────────────────────────────────────
-
 const RiskSchema = z.object({
   overall: z.number().min(0).max(1).describe("Overall risk score 0.0–1.0"),
   overallLevel: z.enum(["LOW", "MODERATE", "HIGH", "CRITICAL"]),
@@ -344,7 +324,7 @@ Stress level(1–10): ${profile.lifestyle?.stressLevel ?? "Unknown"}
       : "No profile data provided.";
 
     const prompt = `
-You are a preventive health risk analyst for PreventIQ, focused on Non - Communicable Diseases(NCDs) prevalent in urban Nigeria.
+You are a preventive health risk analyst for NIMI, focused on Non - Communicable Diseases(NCDs) prevalent in urban Nigeria.
 
 Based on the patient profile below, calculate risk scores for diabetes, hypertension, and cardiovascular disease.
 Scores must be between 0.0(no risk) and 1.0(maximum risk).
@@ -381,68 +361,5 @@ Ensure all scores (overall, diabetes, hypertension, cardiovascular) are raw numb
   };
 }
 
-// ─────────────────────────────────────────────
-// NODE 5: MICRO-LESSON GENERATOR
-// ─────────────────────────────────────────────
 
-const MicroLessonSchema = z.object({
-  title: z.string().describe("Catchy, clear lesson title"),
-  content: z.string().describe("The lesson body — under 60 seconds to read, plain language"),
-  category: z.string().describe("e.g. Nutrition, Exercise, Stress, Sleep, Medication"),
-  readTimeSecs: z.number().int().describe("Estimated read time in seconds"),
-  sourceNote: z.string().describe("Brief attribution e.g. 'Based on WHO NCD guidelines 2023'"),
-});
 
-export function makeMicroLessonNode(apiKey: string) {
-  return async (state: AgentState): Promise<Partial<AgentState>> => {
-    const start = Date.now();
-    console.log("[Node: Micro Lesson] Starting generation...");
-
-    const llm = createLLM(apiKey, 0.6);
-    const structured = llm.withStructuredOutput(MicroLessonSchema);
-
-    const profile = state.userProfile;
-    const conditions = profile?.existingConditions?.join(", ") || "general health";
-    const topic = state.currQuestion || conditions;
-
-    const context = await retrieve(`health tips ${topic} Nigeria prevention`, apiKey);
-
-    const prompt = `
-You are a health educator for PreventIQ, generating personalized micro - lessons for urban Nigerians.
-
-Create a micro - lesson on: "${topic}"
-Patient conditions / focus areas: ${conditions}
-
-    Rules:
-    - Maximum 60 seconds to read(around 120–150 words for the content)
-      - Use simple, friendly, everyday language
-        - Include one practical tip the user can apply TODAY
-          - Be culturally relevant to a Nigerian context(mention local foods, habits, or scenarios where appropriate)
-            - Base content on WHO guidelines or Nigerian health authority recommendations
-
-Reference knowledge:
-${context}
-
-Ensure "readTimeSecs" is a raw integer, not a string.
-    `.trim();
-
-    try {
-      const result = await structured.invoke([["human", prompt]]);
-      const lesson = result as MicroLesson;
-      console.log(`[Node: Micro Lesson]Completed in ${Date.now() - start} ms`);
-      return {
-        microLesson: lesson,
-        currAnswer: `📚 ** ${lesson.title}**\n\n${lesson.content} \n\n_${lesson.sourceNote} _`,
-        category: "Micro-Lesson",
-        code: 1,
-      };
-    } catch (err) {
-      console.error(`[Node: Micro Lesson] Error after ${Date.now() - start} ms: `, err);
-      return {
-        currAnswer: "I couldn't generate a lesson right now. Please try again.",
-        category: "Micro-Lesson",
-        code: 0,
-      };
-    }
-  };
-}

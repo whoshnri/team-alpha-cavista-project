@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 
 const ALGORITHM = "aes-256-gcm";
-const KEY = crypto.scryptSync(process.env.MAGIC_LINK_SECRET || "preventiq_magic_link_fallback_secret", "salt", 32);
+const KEY = crypto.scryptSync(process.env.MAGIC_LINK_SECRET || "nimi_magic_link_fallback_secret", "salt", 32);
 
 export function encryptToken(payload: object): string {
     const iv = crypto.randomBytes(12);

@@ -1,5 +1,5 @@
 
-import { runPreventIQ } from "./src/ai/graph.js";
+import { runNimi } from "./src/ai/graph.js";
 import dotenv from "dotenv";
 dotenv.config();
 
@@ -45,7 +45,7 @@ const mockVisionResult = {
 async function verify() {
     console.log("Running verification with mock vision result...");
 
-    const result = await runPreventIQ({
+    const result = await runNimi({
         message: "Vision scan complete.",
         chatHistory: [],
         userProfile: { age: 45, gender: "Male" },

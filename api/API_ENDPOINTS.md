@@ -1,371 +1,272 @@
-# PreventIQ AI API — Frontend Integration Guide
+# NIMI API Documentation 🏥
 
-**Base URL**: `http://localhost:3000`
-**All endpoints are prefixed with** `/api/ai`
-
----
-
-## Shared Types
-
-### `UserProfile` (optional on all endpoints)
-
-```json
-{
-  "age": 35,
-  "gender": "male",
-  "existingConditions": ["type 2 diabetes", "hypertension"],
-  "familyHistory": ["heart disease", "stroke"],
-  "lifestyle": {
-    "smokingStatus": "non-smoker",
-    "physicalActivityLevel": "moderate",
-    "dietType": "mixed",
-    "stressLevel": 6
-  },
-  "preferredLanguage": "en"
-}
-```
-
-| Field | Type | Notes |
-|---|---|---|
-| `age` | `number?` | Patient age |
-| `gender` | `string?` | e.g. `"male"`, `"female"` |
-| `existingConditions` | `string[]?` | Known diagnoses |
-| `familyHistory` | `string[]?` | Family medical history |
-| `lifestyle.smokingStatus` | `string?` | e.g. `"smoker"`, `"non-smoker"`, `"ex-smoker"` |
-| `lifestyle.physicalActivityLevel` | `string?` | e.g. `"sedentary"`, `"moderate"`, `"active"` |
-| `lifestyle.dietType` | `string?` | e.g. `"vegetarian"`, `"mixed"`, `"high-fat"` |
-| `lifestyle.stressLevel` | `number?` | `1` (low) – `10` (high) |
-| `preferredLanguage` | `string?` | ISO language code |
-
-### `ChatHistoryEntry`
-
-```json
-{ "user": "What causes hypertension?", "bot": "Hypertension is caused by..." }
-```
-
-| Field | Type | Notes |
-|---|---|---|
-| `user` | `string` | The user's message |
-| `bot` | `string \| null` | The bot's reply (`null` for the latest unanswered turn) |
+**Base URL**: `http://localhost:3000`  
+**Authentication**: All protected endpoints require a **Bearer Token** in the `Authorization` header.
 
 ---
 
-## Error Shape (all endpoints)
+## 🔐 1. Authentication (`/api/auth`)
 
-On failure, every endpoint returns **HTTP 500** with:
-
+### Register User
+`POST /api/auth/signup`
+- **Headers**:
+  - `Content-Type: application/json`
+- **Request Body**:
 ```json
 {
-  "success": false,
-  "error": "Human-readable error message"
+  "fullName": "Chidi Okeke",
+  "phoneNumber": "08012345678",
+  "password": "securepassword123",
+  "dateOfBirth": "1990-05-15",
+  "gender": "MALE"
 }
 ```
-
----
-
-## 1. `POST /api/ai/chat` — Conversational Health Q&A
-
-The main chat endpoint. Auto-detects user intent and routes internally to the correct AI pipeline (general Q&A, lab interpretation, risk assessment, or micro-lesson). Supports multi-turn conversation via `chatHistory`.
-
-### Request Body
-
-```json
-{
-  "message": "What foods should I avoid if I have high blood pressure?",
-  "chatHistory": [
-    { "user": "Hello", "bot": "Hi! How can I help you today?" }
-  ],
-  "userProfile": { ... }
-}
-```
-
-| Field | Type | Required | Notes |
-|---|---|---|---|
-| `message` | `string` | ✅ | Min 1 character |
-| `chatHistory` | `ChatHistoryEntry[]` | No | Defaults to `[]`. Send previous turns for context. |
-| `userProfile` | `UserProfile` | No | Personalises responses |
-
-### Response (200)
-
+- **Response**:
 ```json
 {
   "success": true,
-  "response": "To manage high blood pressure, try reducing your salt intake...",
-  "code": 1,
-  "category": "Nutrition",
-  "chatHistory": [
-    { "user": "Hello", "bot": "Hi! How can I help you today?" },
-    { "user": "What foods should I avoid...", "bot": "To manage high blood pressure..." }
-  ],
-  "labInterpretation": { ... },
-  "riskScores": { ... },
-  "microLesson": { ... },
-  "escalation": { ... }
+  "token": "eyJhbG...",
+  "user": { "id": "u123", "fullName": "Chidi Okeke", "phoneNumber": "+2348012345678" }
 }
 ```
 
-| Field | Type | Notes |
-|---|---|---|
-| `response` | `string` | The AI's plain-language reply |
-| `code` | `number` | `1` = confident answer from knowledge base, `0` = uncertain |
-| `category` | `string` | Detected topic: `"Nutrition"`, `"Diabetes"`, `"Hypertension"`, `"Mental Health"`, `"General"`, etc. |
-| `chatHistory` | `ChatHistoryEntry[]` | Updated history — **store and send back on next call** |
-| `labInterpretation?` | `LabInterpretation` | Present only if the intent was detected as a lab result |
-| `riskScores?` | `RiskScores` | Present only if the intent was detected as a risk assessment |
-| `microLesson?` | `MicroLesson` | Present only if the intent was detected as a lesson request |
-| `escalation?` | `EscalationResult` | Present only if a medical emergency was detected |
-
----
-
-## 2. `POST /api/ai/lab` — Lab Result Interpreter
-
-Dedicated endpoint for interpreting raw lab result text. Returns structured biomarker data with a traffic-light status system.
-
-### Request Body
-
+### Login
+`POST /api/auth/login`
+- **Headers**:
+  - `Content-Type: application/json`
+- **Request Body**:
 ```json
 {
-  "labText": "Haemoglobin: 10.2 g/dL, WBC: 11,500 /µL, Platelets: 180,000 /µL, Fasting Glucose: 126 mg/dL",
-  "userProfile": { ... }
+  "phoneNumber": "08012345678",
+  "password": "securepassword123"
 }
 ```
-
-| Field | Type | Required | Notes |
-|---|---|---|---|
-| `labText` | `string` | ✅ | Min 10 characters. Paste the raw lab result text. |
-| `userProfile` | `UserProfile` | No | Adds patient context to the interpretation |
-
-### Response (200)
-
+- **Response**:
 ```json
 {
   "success": true,
-  "summary": "Your blood count looks mostly normal, but your fasting glucose is elevated...",
-  "labInterpretation": {
-    "testName": "Complete Blood Count + Metabolic Panel",
-    "overallStatus": "BORDERLINE",
-    "biomarkers": [
-      {
-        "name": "Haemoglobin",
-        "value": 10.2,
-        "unit": "g/dL",
-        "referenceMin": 12.0,
-        "referenceMax": 17.5,
-        "status": "CONCERNING",
-        "flagNote": "Below normal range — could indicate anaemia."
-      },
-      {
-        "name": "Fasting Glucose",
-        "value": 126,
-        "unit": "mg/dL",
-        "referenceMin": 70,
-        "referenceMax": 100,
-        "status": "CONCERNING",
-        "flagNote": "Above normal — this meets the threshold for diabetes diagnosis."
-      }
-    ],
-    "plainSummary": "Your blood count looks mostly normal...",
-    "recommendations": [
-      "See your doctor about the elevated glucose level",
-      "Consider an HbA1c test for a long-term blood sugar picture",
-      "Increase iron-rich foods like beans, spinach, and liver"
-    ]
-  }
+  "token": "eyJhbG...",
+  "user": { "id": "u123", "fullName": "Chidi Okeke" }
 }
 ```
 
-#### `LabInterpretation` shape
-
-| Field | Type | Notes |
-|---|---|---|
-| `testName` | `string` | e.g. `"Complete Blood Count"` |
-| `overallStatus` | `"NORMAL" \| "BORDERLINE" \| "CONCERNING"` | Traffic-light status |
-| `biomarkers` | `ParsedBiomarker[]` | Array of individual biomarker results (see below) |
-| `plainSummary` | `string` | 2–3 sentence non-medical summary |
-| `recommendations` | `string[]` | 3–5 actionable next steps |
-
-#### `ParsedBiomarker` shape
-
-| Field | Type | Notes |
-|---|---|---|
-| `name` | `string` | Biomarker name |
-| `value` | `number` | Measured value |
-| `unit` | `string` | Unit of measurement |
-| `referenceMin?` | `number` | Lower bound of normal range |
-| `referenceMax?` | `number` | Upper bound of normal range |
-| `status` | `"NORMAL" \| "BORDERLINE" \| "CONCERNING"` | Traffic-light status |
-| `flagNote` | `string` | Plain-language explanation |
-
 ---
 
-## 3. `POST /api/ai/risk` — NCD Risk Assessment
+## 👤 2. User & Chat History (`/api/user`)
 
-Calculates risk scores for diabetes, hypertension, and cardiovascular disease based on the user's health profile.
-
-### Request Body
-
+### Get Profile
+`GET /api/user/profile`
+- **Headers**:
+  - `Authorization: Bearer <token>`
+- **Response**:
 ```json
 {
-  "userProfile": {
-    "age": 45,
-    "gender": "male",
-    "existingConditions": ["obesity"],
-    "familyHistory": ["diabetes", "heart disease"],
-    "lifestyle": {
-      "smokingStatus": "ex-smoker",
-      "physicalActivityLevel": "sedentary",
-      "dietType": "high-fat",
-      "stressLevel": 8
+  "success": true,
+  "profile": {
+    "fullName": "Chidi Okeke",
+    "healthProfile": {
+      "heightCm": 175,
+      "weightKg": 70,
+      "bmi": 22.9,
+      "existingConditions": ["None"],
+      "familyHistory": ["Hypertension"]
     }
-  },
-  "message": "I've been having frequent headaches recently"
+  }
 }
 ```
 
-| Field | Type | Required | Notes |
-|---|---|---|---|
-| `userProfile` | `UserProfile` | No | The more profile data, the more accurate the assessment |
-| `message` | `string` | No | Defaults to `"Please assess my health risk."`. Additional context. |
+### Update Health Profile
+`PATCH /api/user/profile`
+- **Headers**:
+  - `Authorization: Bearer <token>`
+  - `Content-Type: application/json`
+- **Request Body**:
+```json
+{
+  "heightCm": 175,
+  "weightKg": 75,
+  "existingConditions": ["Type 2 Diabetes"],
+  "lifestyle": {
+    "physicalActivityLevel": "moderate",
+    "stressLevel": 4
+  }
+}
+```
 
-### Response (200)
-
+### List Recent Chats
+`GET /api/user/chats`
+- **Headers**:
+  - `Authorization: Bearer <token>`
+- **Response**:
 ```json
 {
   "success": true,
-  "summary": "Your overall health risk level is **HIGH** (score: 72%). Your top risk factors are: sedentary lifestyle, family history of diabetes, obesity.",
-  "riskScores": {
-    "overall": 0.72,
-    "overallLevel": "HIGH",
-    "diabetes": 0.78,
-    "hypertension": 0.65,
-    "cardiovascular": 0.70,
-    "topFactors": [
-      "Sedentary lifestyle",
-      "Family history of diabetes and heart disease",
-      "Obesity",
-      "High stress levels",
-      "High-fat diet"
-    ],
-    "recommendations": [
-      "Start with 30 minutes of brisk walking 5 days a week",
-      "Reduce fried food and increase vegetables like ugu, ewedu, and waterleaf",
-      "Schedule a fasting blood sugar test and lipid panel",
-      "Practice stress-relief techniques like deep breathing",
-      "Monitor blood pressure weekly at a nearby pharmacy"
+  "chats": [
+    { "id": "c123", "firstMessage": "I've been feeling dizzy...", "lastMessageAt": "2024-03-20T10:00:00Z" }
+  ]
+}
+```
+
+### Get Detailed Chat History
+`GET /api/user/chats/:id`
+- **Headers**:
+  - `Authorization: Bearer <token>`
+- **Response**: Messages can be one of 3 types based on the `sender` field:
+
+| `sender`       | Description                                       | Key Fields              |
+|----------------|---------------------------------------------------|-------------------------|
+| `USER`         | A user message                                    | `content`               |
+| `AI`           | An assistant reply (may contain `<!--METADATA:{}-->` in `content`) | `content`               |
+| `TOOL_RESULT`  | A tool execution result (clinic search, heart rate scan, etc.)     | `tool`, `data`          |
+
+**Example**:
+```json
+{
+  "success": true,
+  "session": {
+    "id": "c123",
+    "messages": [
+      { "id": "msg_0", "sender": "USER", "content": "I've been feeling dizzy.", "createdAt": "..." },
+      { "id": "msg_1", "sender": "AI", "content": "I'm sorry to hear that...\n<!--METADATA:{\"toolRequests\":[{\"tool\":\"nearby_clinics\",\"reason\":\"...\"}]}-->", "createdAt": "..." },
+      { "id": "msg_2", "sender": "TOOL_RESULT", "tool": "nearby_clinics", "data": { "clinics": [...], "total_found": 3 }, "content": "", "createdAt": "..." }
     ]
   }
 }
 ```
 
-#### `RiskScores` shape
-
-| Field | Type | Notes |
-|---|---|---|
-| `overall` | `number` | `0.0` (no risk) – `1.0` (maximum risk) |
-| `overallLevel` | `"LOW" \| "MODERATE" \| "HIGH" \| "CRITICAL"` | Human-readable risk tier |
-| `diabetes` | `number` | `0.0` – `1.0` |
-| `hypertension` | `number` | `0.0` – `1.0` |
-| `cardiovascular` | `number` | `0.0` – `1.0` |
-| `topFactors` | `string[]` | Top 3–5 contributing risk factors |
-| `recommendations` | `string[]` | 5 prioritised lifestyle / clinical recommendations |
+> **Frontend Rendering Guide:**
+> - `USER` → Render as a user chat bubble.
+> - `AI` → Strip `<!--METADATA:{}-->`, render as bot bubble. Parse metadata to render lab cards, risk panels, escalation alerts, and tool request prompts.
+> - `TOOL_RESULT` → Render based on `tool` field. For `nearby_clinics`, render clinic result cards using `data.clinics`. For `heart_rate_scan`, render vital signs.
 
 ---
 
-## 4. `POST /api/ai/lesson` — Personalised Micro-Lesson
+## 🥗 3. Health & Risk Profile (`/api/user`)
 
-Generates a short, culturally relevant health lesson (under 60 seconds to read).
-
-### Request Body
-
-```json
-{
-  "topic": "managing blood sugar through diet",
-  "userProfile": { ... }
-}
-```
-
-| Field | Type | Required | Notes |
-|---|---|---|---|
-| `topic` | `string` | No | If omitted, generates based on `userProfile.existingConditions` |
-| `userProfile` | `UserProfile` | No | Personalises the lesson to the user's conditions |
-
-### Response (200)
-
+### Basic Health Summary
+`GET /api/user/health-profile`
+- **Headers**:
+  - `Authorization: Bearer <token>`
+- **Response**:
 ```json
 {
   "success": true,
-  "response": "📚 **Swap Your Swallow, Save Your Sugar**\n\nInstead of pounded yam...",
-  "microLesson": {
-    "title": "Swap Your Swallow, Save Your Sugar",
-    "content": "Instead of pounded yam or eba every day, try swapping one meal for amala made from unripe plantain flour...",
-    "category": "Nutrition",
-    "readTimeSecs": 45,
-    "sourceNote": "Based on WHO NCD guidelines 2023 and Nigerian Dietetic Association recommendations"
+  "interpretation": {
+    "heartRate": "72 BPM baseline",
+    "risks": ["Elevated resting heart rate"],
+    "confidence": "85% — 12 readings collected"
   }
 }
 ```
 
-#### `MicroLesson` shape
-
-| Field | Type | Notes |
-|---|---|---|
-| `title` | `string` | Catchy lesson title |
-| `content` | `string` | The lesson body (~120–150 words) |
-| `category` | `string` | e.g. `"Nutrition"`, `"Exercise"`, `"Stress"`, `"Sleep"`, `"Medication"` |
-| `readTimeSecs` | `number` | Estimated read time in seconds |
-| `sourceNote` | `string` | Brief source attribution |
-
----
-
-## 5. `POST /api/ai/escalate` — Emergency Detection
-
-Checks a message for medical emergency signals. The escalation node runs on **every** `/chat` call automatically, but this endpoint lets you run a standalone check.
-
-### Request Body
-
-```json
-{
-  "message": "I'm having severe chest pains and difficulty breathing"
-}
-```
-
-| Field | Type | Required | Notes |
-|---|---|---|---|
-| `message` | `string` | ✅ | Min 1 character |
-
-### Response (200)
-
+### Detailed Health Dashboard Data
+`GET /api/user/health-profile/detailed`
+- **Headers**:
+  - `Authorization: Bearer <token>`
+- **Response**:
 ```json
 {
   "success": true,
-  "isEmergency": true,
-  "escalation": {
-    "isEmergency": true,
-    "detectedKeywords": ["chest pain", "difficulty breathing"],
-    "urgencyMessage": "I can see you're experiencing chest pain and difficulty breathing. These could be signs of a serious condition. Please stay calm — help is available.",
-    "nearestClinicPrompt": "Please call LASAMBUS (Lagos) at 112 or 767 immediately, or go to your nearest emergency room. If someone is with you, ask them to drive you."
-  },
-  "response": "🚨 I can see you're experiencing chest pain..."
+  "data": {
+    "summary": {
+      "physical": { "label": "Physical Build", "metrics": [...] },
+      "vitals": { "label": "Heart & Circulation", "metrics": [...] },
+      "risks": { "label": "Preventative Insights", "indicators": [...] }
+    },
+    "confidence": 0.85
+  }
 }
 ```
 
-#### `EscalationResult` shape
+---
 
-| Field | Type | Notes |
-|---|---|---|
-| `isEmergency` | `boolean` | `true` if emergency signals were detected |
-| `detectedKeywords` | `string[]` | Emergency phrases found in the message |
-| `urgencyMessage` | `string` | Empathetic message urging immediate action |
-| `nearestClinicPrompt` | `string` | Instructions to find nearest clinic / call emergency services |
+## 🤖 4. AI Health Assistant (`/api/ai`)
+
+### Conversational Chat & Diagnostics
+`POST /api/ai/chat`
+- **Headers**:
+  - `Authorization: Bearer <token>`
+  - `Content-Type: application/json`
+  - `x-chat-session-id: <session_id>` (optional, links chat to existing session)
+- **Request Body**:
+```json
+{
+  "message": "I've been feeling dizzy lately after eating.",
+  "chatHistory": [
+    { "user": "Hello", "bot": "Hi! I'm NIMI. How can I help?" }
+  ]
+}
+```
+- **Response**:
+```json
+{
+  "success": true,
+  "response": "Dizziness after meals can sometimes be related to blood sugar changes...",
+  "category": "Diabetes",
+  "code": 1,
+  "chatHistory": [...],
+  "toolRequests": [
+    { "tool": "heart_rate_scan", "reason": "Check your vitals while sitting." }
+  ]
+}
+```
+
+### Lab Interpreter
+`POST /api/ai/lab`
+- **Headers**:
+  - `Authorization: Bearer <token>`
+  - `Content-Type: application/json`
+- **Request Body**:
+```json
+{
+  "labText": "Fasting Glucose: 115 mg/dL, HbA1c: 6.2%"
+}
+```
+
+### Emergency Detection (Stand-alone)
+`POST /api/ai/escalate`
+- **Headers**:
+  - `Authorization: Bearer <token>`
+  - `Content-Type: application/json`
+- **Request Body**:
+```json
+{
+  "message": "My chest hurts and I can't breathe"
+}
+```
 
 ---
 
-## Quick Reference
+## 🏥 5. Clinical Services (`/api/clinics`)
 
-| Endpoint | Method | Primary Use Case |
-|---|---|---|
-| `/api/ai/chat` | POST | Main conversational interface (auto-routes by intent) |
-| `/api/ai/lab` | POST | Paste & interpret lab results |
-| `/api/ai/risk` | POST | Get NCD risk scores from health profile |
-| `/api/ai/lesson` | POST | Generate a short health lesson |
-| `/api/ai/escalate` | POST | Check for medical emergency signals |
+### Find Nearby Clinics
+`GET /api/clinics/nearby?lat=6.5244&lng=3.3792&radius=5000`
+- **Headers**:
+  - `Authorization: Bearer <token>`
+  - `x-chat-session-id: <session_id>` (optional — if provided, clinic results are auto-saved as a `TOOL_RESULT` message in the chat session)
+
+---
+
+## 🚶 6. Gait & PWA Sync (`/api/gait`)
+
+### Log Gait Data
+`POST /api/gait/log`
+- **Headers**:
+  - `Authorization: Bearer <token>`
+  - `Content-Type: application/json`
+
+### Sync PWA Magic Link
+`GET /api/gait/validate-magic-link?token=ENCRYPTED_PX_TOKEN`
+- **Headers**:
+  - `Authorization: Bearer <token>`
+
+---
+<!-- 
+## 📡 7. Real-time Events (`/api/sse`)
+
+Connect to `GET /api/sse` to receive real-time updates:
+- **Headers**:
+  - `Authorization: Bearer <token>`
+- **Events**:
+  - `capture_request`: AI-requested VitScan/Heart checks.
+  - `PING_PWA`: Server-initiated wake-up call for the PWA. -->

@@ -7,7 +7,7 @@ import { sign } from "hono/jwt";
 import { normalizePhoneNumber } from "./utils/phone.js";
 
 const auth = new Hono();
-const JWT_SECRET = process.env.JWT_SECRET || "preventiq_super_secret_key_123!";
+const JWT_SECRET = process.env.JWT_SECRET || "nimi_super_secret_key_123!";
 
 const SignupSchema = z.object({
     fullName: z.string().min(2),
