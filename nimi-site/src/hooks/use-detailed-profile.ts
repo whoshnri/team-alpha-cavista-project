@@ -43,7 +43,7 @@ export function useDetailedProfile() {
     const [error, setError] = useState<string | null>(null)
 
     const fetchDetailedProfile = useCallback(async () => {
-        const token = Cookies.get("preventiq_token")
+        const token = Cookies.get("nimi_token")
         if (!token) {
             setLoading(false)
             return

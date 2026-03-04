@@ -1,6 +1,6 @@
 "use client"
 
-import { HeartPulse, X, MessageSquare, Activity, FileText, Settings } from "lucide-react"
+import { HeartPulse, X, MessageSquare, Activity, FileText, Settings, User } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useProfile } from "@/hooks/use-profile"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -79,7 +79,6 @@ export function Sidebar({
                         >
                             New Chat
                         </button>
-
                     </div>
 
                     {/* Recent Chats Section */}
@@ -152,8 +151,8 @@ export function Sidebar({
                                 {user?.fullName?.charAt(0) || "U"}
                             </div>
                             <div className="flex-1 min-w-0">
-                                <div className="text-sm font-base uppercase tracking-wide truncate">{user?.fullName || "Personnel Profile"}</div>
-                                <div className="text-xs opacity-60 leading-none mt-1">Config & Settings</div>
+                                <div className="text-sm font-base uppercase tracking-wide truncate">Profile</div>
+                                <div className="text-xs opacity-60 leading-none mt-1">Manage Health Profile</div>
                             </div>
                         </button>
                     </footer>

@@ -7,10 +7,14 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
-import { User, ShieldPlus, LogOut, Ruler, Weight, Calculator, Bell, Trash2, AlertCircle } from "lucide-react"
+import { User, ShieldPlus, LogOut, Ruler, Weight, Calculator, Bell, Trash2, AlertCircle, Activity } from "lucide-react"
 import { cn } from "@/lib/utils"
 
-export function SettingsView() {
+interface SettingsViewProps {
+    setActiveTab?: (tab: string) => void
+}
+
+export function SettingsView({ setActiveTab }: SettingsViewProps) {
     const { profile, user, updateProfile, deleteAccount, logout } = useProfile()
     const [formData, setFormData] = useState(profile)
     const [saving, setSaving] = useState(false)
@@ -43,17 +47,46 @@ export function SettingsView() {
             {/* User Header */}
             <section className="card bg-background">
                 <div className="flex flex-col md:flex-row items-center gap-6">
-                    <div className="h-20 w-20 border border-border flex items-center justify-center text-text-primary font-base text-3xl capitalize rounded-2xl bg-surface shadow-sm">
+                    <div className="h-20 w-20 border border-border flex items-center justify-center text-text-primary font-base text-3xl capitalize rounded-lg bg-surface shadow-sm">
                         {user?.fullName?.charAt(0) || "?"}
                     </div>
                     <div className="flex-1 text-center md:text-left space-y-2">
-                        <h3 className="text-2xl font-serif text-text-primary ">{user?.fullName || "Agent Profile"}</h3>
+                        <h3 className="text-2xl font-serif text-text-primary ">{user?.fullName}</h3>
                         <div className="flex flex-wrap justify-center md:justify-start gap-3">
                             <span className="section-label bg-surface border-border text-text-muted">{user?.phoneNumber}</span>
                             <span className="section-label bg-accent-blue/5 border-accent-blue/20 text-accent-blue font-base">{user?.gender?.toUpperCase()}</span>
                             <span className="section-label border-border text-text-muted font-bold">{profile.age ? `${profile.age} YEARS` : 'AGE PENDING'}</span>
                         </div>
                     </div>
+                    <div className="mt-4 md:mt-0 flex flex-col sm:flex-row items-center gap-3">
+                        <Button
+                            className="w-full sm:w-auto btn-primary"
+                            onClick={handleSave}
+                            disabled={saving}
+                        >
+                            {saving ? "Saving..." : "Save Changes"}
+                        </Button>
+                    </div>
+                </div>
+            </section>
+
+            {/* Health Snapshot Link */}
+            <section className="card bg-accent-blue/5 border-accent-blue/20">
+                <div className="flex flex-col md:flex-row items-center justify-between gap-6">
+                    <div className="space-y-2 text-center md:text-left">
+                        <h3 className="text-xl font-bold tracking-tight text-accent-blue uppercase flex items-center justify-center md:justify-start gap-2">
+                            <Activity className="h-5 w-5" />
+                            Comprehensive Health Profile
+                        </h3>
+                        <p className="text-sm text-text-secondary">View detailed charts, trends, and AI-generated insight reports computed actively from your log history.</p>
+                    </div>
+                    <Button
+                        variant="outline"
+                        className="btn-primary"
+                        onClick={() => setActiveTab?.('profile_detailed')}
+                    >
+                        View Details
+                    </Button>
                 </div>
             </section>
 

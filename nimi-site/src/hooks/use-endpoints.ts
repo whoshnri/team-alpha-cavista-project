@@ -104,6 +104,16 @@ export function useEndpoints() {
         return res.data
     }, [])
 
+    const getHealthTrends = useCallback(async (params: { fresh?: boolean }) => {
+        const res = await axiosInstance.get('/api/user/trends', { params })
+        return res.data
+    }, [])
+
+    const getVitalInsight = useCallback(async (params: { vital_key: string, fresh?: boolean }) => {
+        const res = await axiosInstance.get('/api/user/vital-insight', { params })
+        return res.data
+    }, [])
+
     return {
         sendMessage,
         escalate,
@@ -115,6 +125,8 @@ export function useEndpoints() {
         persistMessage,
         getNearbyClinics,
         getRecentGaitData,
-        getSessionMessages
+        getSessionMessages,
+        getHealthTrends,
+        getVitalInsight
     }
 }

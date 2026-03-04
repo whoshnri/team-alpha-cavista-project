@@ -25,7 +25,8 @@ function HomeContent() {
   const pathname = usePathname()
 
   const initialSessionId = searchParams.get('sid')
-  const [activeTab, setActiveTab] = useState("chat")
+  const initialTab = searchParams.get('tab') || 'chat'
+  const [activeTab, setActiveTab] = useState(initialTab)
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [activeSessionId, setActiveSessionId] = useState<string | null>(initialSessionId)
 
@@ -34,6 +35,10 @@ function HomeContent() {
     const sid = searchParams.get('sid')
     if (sid !== activeSessionId) {
       setActiveSessionId(sid)
+    }
+    const tab = searchParams.get('tab')
+    if (tab && tab !== activeTab) {
+      setActiveTab(tab)
     }
   }, [searchParams])
 
@@ -46,10 +51,16 @@ function HomeContent() {
       params.delete('sid')
     }
 
+    if (activeTab && activeTab !== 'chat') {
+      params.set('tab', activeTab)
+    } else {
+      params.delete('tab')
+    }
+
     const queryString = params.toString()
     const url = queryString ? `${pathname}?${queryString}` : pathname
     router.replace(url)
-  }, [activeSessionId])
+  }, [activeSessionId, activeTab, pathname, router, searchParams])
 
 
   const navItems = [
@@ -101,7 +112,7 @@ function HomeContent() {
                   </div>
                   {activeTab === 'profile_detailed' && <HealthProfileView />}
 
-                  {activeTab === 'settings' && <SettingsView />}
+                  {activeTab === 'settings' && <SettingsView setActiveTab={setActiveTab} />}
                 </div>
               </div>
             )}

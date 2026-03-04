@@ -14,9 +14,10 @@ import {
     Info
 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { HealthProfileSummary } from "./health-profile-summary"
 
 export function HealthProfileView() {
-    const { data: profile, loading, error } = useDetailedProfile()
+    const { data, loading, error } = useDetailedProfile()
 
     if (loading) {
         return (
@@ -29,45 +30,31 @@ export function HealthProfileView() {
                 </div>
             </div>
         )
-    } 
-
-    if (error || !profile) {
-        return (
-            <div className="flex flex-col items-center justify-center p-12 text-center border border-dashed border-border rounded-lg bg-surface">
-                <ShieldAlert className="h-10 w-10 text-text-muted mb-4" />
-                <h3 className="text-lg font-bold text-text-primary uppercase tracking-tight">Profile Not Found</h3>
-                <p className="text-sm text-text-secondary mt-2 max-w-xs mx-auto">
-                    We couldn't load your full health profile. Please ensure you have completed your initial onboarding or health scan.
-                </p>
-            </div>
-        )
     }
+
+    const p = data
+
 
     return (
         <div className="relative space-y-8 pb-20">
             {/* Header Section */}
-            <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+            <div className="flex  md:items-end justify-between gap-4">
                 <div>
-                    <div className="flex items-center gap-2 mb-2">
-                        <Badge variant="outline" className="text-[10px] capitalize border-border text-text-muted px-2 py-0">
-                            Verified Profile
-                        </Badge>
-                    </div>
-                    <h1 className="text-4xl font-bold tracking-tight text-text-primary uppercase">
-                        {profile.user.name}
+                    <h1 className="text-xl md:text-4xl font-bold tracking-tight text-text-primary uppercase">
+                        {p?.user?.name || "Profile Pending"}
                     </h1>
-                    <p className="text-text-secondary text-sm mt-1 uppercase tracking-wide">
-                        {profile.user.gender} • {profile.user.age} Years Old • ID: {Math.random().toString(36).substr(2, 9).toUpperCase()}
+                    <p className="text-text-secondary text-xs mt-1 uppercase tracking-wide">
+                        {p?.user?.gender || "N/A"} • {p?.user?.age || "—"} Years Old • ID: {Math.random().toString(36).substr(2, 9).toUpperCase()}
                     </p>
                 </div>
 
-                <div className="flex items-center gap-3 px-4 py-3 bg-surface border border-border rounded-lg">
+                <div className="flex wfit items-center gap-3 px-4 py-3 bg-surface border border-border rounded-lg">
                     <div className="flex flex-col items-end">
-                        <span className="text-[10px] text-text-muted font-bold capitalize">
+                        {/* <span className="text-xs text-text-muted font-bold capitalize">
                             Profile confidence
-                        </span>
+                        </span> */}
                         <span className="text-xl font-mono font-bold text-text-primary">
-                            {Math.round(profile.confidence * 100)}%
+                            {Math.round((p?.confidence || 0) * 100)}%
                         </span>
                     </div>
                     <div className="h-10 w-[2px] bg-border" />
@@ -81,9 +68,6 @@ export function HealthProfileView() {
                     <Sparkles className="h-24 w-24 text-text-primary" />
                 </div>
                 <div className="flex items-start gap-4 relative z-10">
-                    <div className="p-2.5 bg-text-primary text-background rounded-lg">
-                        <Sparkles className="h-5 w-5" />
-                    </div>
                     <div className="space-y-1">
                         <h4 className="text-sm font-bold text-text-primary uppercase tracking-tight">AI Autonomous Sync</h4>
                         <p className="text-sm text-text-secondary leading-relaxed max-w-2xl">
@@ -93,43 +77,49 @@ export function HealthProfileView() {
                 </div>
             </div>
 
+            <HealthProfileSummary />
+
             {/* Main Grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
 
                 {/* Physical Build */}
                 <HealthSection
                     icon={<User className="h-4 w-4" />}
-                    title={profile.summary.physical.label}
-                    description={profile.summary.physical.description}
+                    title={p?.summary?.physical?.label || "Physical Build"}
+                    description={p?.summary?.physical?.description || "Awaiting scan data"}
                 >
                     <div className="grid grid-cols-1 gap-4">
-                        {profile.summary.physical.metrics.map((m, i) => (
+                        {p?.summary?.physical?.metrics?.length ? p?.summary.physical.metrics.map((m: any, i: number) => (
                             <MetricRow key={i} label={m.label} value={m.value} note={m.note} />
-                        ))}
+                        )) : (
+                            <div className="text-xs text-text-muted italic py-2">No physical metrics recorded.</div>
+                        )}
                     </div>
                 </HealthSection>
 
                 {/* Heart & Circulation */}
                 <HealthSection
                     icon={<Heart className="h-4 w-4" />}
-                    title={profile.summary.vitals.label}
-                    description={profile.summary.vitals.description}
+                    title={p?.summary?.vitals?.label || "Heart & Circulation"}
+                    description={p?.summary?.vitals?.description || "Awaiting vital signs monitoring"}
                 >
                     <div className="grid grid-cols-1 gap-4">
-                        {profile.summary.vitals.metrics.map((m, i) => (
+                        {p?.summary?.vitals?.metrics?.length ? p?.summary.vitals.metrics.map((m: any, i: number) => (
                             <MetricRow key={i} label={m.label} value={m.value} note={m.note} />
-                        ))}
+                        )) : (
+                            <div className="text-xs text-text-muted italic py-2">No active vitals recorded.</div>
+                        )}
                     </div>
                 </HealthSection>
 
                 {/* Preventative Insights */}
                 <HealthSection
                     icon={<ShieldAlert className="h-4 w-4" />}
-                    title={profile.summary.risks.label}
-                    description={profile.summary.risks.description}
+                    title={p?.summary?.risks?.label || "Preventative Insights"}
+                    description={p?.summary?.risks?.description || "Awaiting risk analysis"}
                 >
                     <div className="space-y-4">
-                        {profile.summary.risks.indicators.map((ind, i) => (
+                        {p?.summary?.risks?.indicators?.length ? p?.summary.risks.indicators.map((ind: any, i: number) => (
                             <div key={i} className="p-3 bg-surface border border-border rounded-lg">
                                 <div className="flex items-center justify-between mb-1">
                                     <span className="text-[11px] font-bold text-text-muted uppercase tracking-wide">{ind.label}</span>
@@ -142,26 +132,28 @@ export function HealthProfileView() {
                                 </div>
                                 {ind.description && <p className="text-[11px] text-text-muted">{ind.description}</p>}
                             </div>
-                        ))}
+                        )) : (
+                            <div className="text-xs text-text-muted italic py-2">Insufficient data to generate insights.</div>
+                        )}
                     </div>
                 </HealthSection>
 
                 {/* Health Background */}
                 <HealthSection
                     icon={<History className="h-4 w-4" />}
-                    title={profile.summary.history.label}
-                    description={profile.summary.history.description}
+                    title={p?.summary?.history?.label || "Health Background"}
+                    description={p?.summary?.history?.description || "Awaiting history log"}
                 >
                     <div className="space-y-4">
-                        {profile.summary.history.data.map((item, i) => (
+                        {p?.summary?.history?.data?.length ? p?.summary.history.data.map((item: any, i: number) => (
                             <div key={i}>
                                 <span className="text-[11px] font-bold text-text-muted uppercase tracking-wide block mb-2">{item.label}</span>
                                 <div className="flex flex-wrap gap-2">
-                                    {item.values && item.values.length > 0 ? item.values.map((v, vi) => (
+                                    {item.values && item.values.length > 0 ? item.values.map((v: any, vi: number) => (
                                         <Badge key={vi} variant="outline" className="text-[10px] bg-surface border-border text-text-muted px-2 py-0.5">
                                             {v}
                                         </Badge>
-                                    )) : item.items ? item.items.map((it, iti) => (
+                                    )) : item.items ? item.items.map((it: any, iti: number) => (
                                         <Badge key={iti} variant="outline" className="text-[10px] bg-surface border-border text-text-muted px-2 py-0.5">
                                             {it}
                                         </Badge>
@@ -170,7 +162,9 @@ export function HealthProfileView() {
                                     )}
                                 </div>
                             </div>
-                        ))}
+                        )) : (
+                            <div className="text-xs text-text-muted italic py-2">No historical health records found.</div>
+                        )}
                     </div>
                 </HealthSection>
 
@@ -178,10 +172,10 @@ export function HealthProfileView() {
 
             <div className="pt-8 text-center border-t border-border">
                 <p className="text-[10px] text-text-muted font-mono uppercase tracking-[0.2em]">
-                    Profile last recalibrated: {new Date(profile.lastUpdated).toLocaleDateString()} {new Date(profile.lastUpdated).toLocaleTimeString()}
+                    Profile last recalibrated: {p?.lastUpdated ? new Date(p?.lastUpdated).toLocaleString() : "—"}
                 </p>
             </div>
-        </div>
+        </div >
     )
 }
 
