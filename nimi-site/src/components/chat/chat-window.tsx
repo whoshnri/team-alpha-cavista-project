@@ -686,19 +686,18 @@ export function ChatWindow({ sessionId, onNewSession }: ChatWindowProps) {
                 <LabUploadInline
                   onClose={() => setToolState({ phase: 'idle', toolRequest: null, originalMessage: '', chatHistory: [] })}
                   onSuccess={(result) => {
-                    const stripMetadata = (text: string) => {
-                      return text
-                        .replace(/<!--METADATA:[\s\S]*?-!>/g, '')
-                        .replace(/<!--RECOMMENDATIONS:[\s\S]*?-!>/g, '')
-                        .replace(/<!--OVERALL_STATUS:[\s\S]*?-!>/g, '')
-                        .trim();
-                    };
+                    const { content: parsedContent, metadata: parsedMetadata } = parseMessageContent(
+                      result.result || "I have analyzed your lab results."
+                    );
+
                     const botMsg: UIMessage = {
                       role: 'bot',
-                      content: stripMetadata(result.result || "I have analyzed your lab results."),
+                      content: parsedContent,
                       metadata: {
+                        ...(parsedMetadata || {}),
                         lab: {
-                          interpretation: stripMetadata(result.result || "I have analyzed your lab results."),
+                          interpretation: parsedContent,
+                          ...(parsedMetadata?.lab || {}),
                           ...result
                         },
                         utilizedTool: 'lab_interpretation'
