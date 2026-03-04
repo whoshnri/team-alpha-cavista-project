@@ -79,15 +79,7 @@ export function Sidebar({
                         >
                             New Chat
                         </button>
-                        <button
-                            onClick={() => {
-                                setActiveTab('lab')
-                                if (window.innerWidth < 1024) onClose()
-                            }}
-                            className="w-full flex items-center justify-center gap-2 py-3 border border-border rounded-lg bg-background hover:bg-surface-raised transition-colors text-sm font-base uppercase text-text-secondary hover:text-text-primary shadow-sm"
-                        >
-                            Lab Results
-                        </button>
+
                     </div>
 
                     {/* Recent Chats Section */}

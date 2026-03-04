@@ -38,9 +38,13 @@ export function useEndpoints() {
         return res.data
     }, [])
 
-    const interpretLab = useCallback(async (labText: string) => {
+    const interpretLab = useCallback(async (labText: string, sessionId: string) => {
+        const headers: Record<string, string> = {};
+        if (sessionId) {
+            headers['x-chat-session-id'] = sessionId;
+        }
         console.log(`[ENDPOINTS] Interpreting lab data...`);
-        const res = await axiosInstance.post(`/api/ai/lab`, { labText })
+        const res = await axiosInstance.post(`/api/ai/lab`, { labText }, { headers })
         return res.data
     }, [])
 

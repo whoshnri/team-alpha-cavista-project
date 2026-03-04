@@ -1,114 +1,50 @@
-// graph.ts — NIMI LangGraph state graph with intent routing
-
-import { StateGraph, END, START } from "@langchain/langgraph";
-import type { AgentState, CookieTurn, UserProfile, ToolRequest, ToolResult } from "./types.js";
+// graph are here
+import { END, START, StateGraph } from "@langchain/langgraph";
+import type { CookieTurn, UserProfile, ToolRequest, ToolResult, AgentState, AgentLabState } from "./types.js";
 import {
-    makeEscalationNode,
     makeHealthQANode,
-    makeLabInterpreterNode,
-    makeRiskAssessmentNode,
+    makeLabQANode
 } from "./nodes.js";
+import { AgentLabStateGraph, AgentStateGraph } from "../lib/schemas.js";
 
-// ─────────────────────────────────────────────
-// INTENT ROUTER
-// Decides which node to run after escalation check
-// ─────────────────────────────────────────────
+export function buildQAGraph(apiKey: string) {
+    const graph = new StateGraph(AgentStateGraph);
 
-type Intent = "lab_result" | "risk_assessment" | "health_qa";
+    // Register nodes
+    graph.addNode("health_qa", makeHealthQANode(apiKey))
 
-function detectIntent(question: string, forcedIntent?: string): Intent {
-    if (forcedIntent) return forcedIntent as Intent;
-
-    const q = question.toLowerCase();
-
-    const labKeywords = ["lab result", "blood test", "result", "haemoglobin", "glucose", "hba1c", "creatinine", "cholesterol", "wbc", "rbc", "platelet", "test result", "my results"];
-
-    if (labKeywords.some((k) => q.includes(k))) return "lab_result";
-    return "health_qa";
-}
-
-// ─────────────────────────────────────────────
-// GRAPH BUILDER
-// ─────────────────────────────────────────────
-
-export function buildNimiGraph(apiKey: string) {
-    const graph = new StateGraph<AgentState>({
-        channels: {
-            messages: { value: (a, b) => b ?? a, default: () => [] },
-            currQuestion: { value: (a, b) => b ?? a, default: () => "" },
-            currAnswer: { value: (a, b) => b ?? a, default: () => "" },
-            cookie: { value: (a, b) => b ?? a, default: () => [] },
-            category: { value: (a, b) => b ?? a, default: () => "" },
-            code: { value: (a, b) => b ?? a, default: () => 0 },
-            labInterpretation: { value: (a, b) => b ?? a, default: () => null },
-            riskScores: { value: (a, b) => b ?? a, default: () => null },
-            escalation: { value: (a, b) => b ?? a, default: () => null },
-            userProfile: { value: (a, b) => b ?? a, default: () => null },
-            toolRequests: { value: (a, b) => b ?? a, default: () => [] },
-            toolResults: { value: (a, b) => b ?? a, default: () => [] },
-            _intent: { value: (a, b) => b ?? a, default: () => undefined },
-        },
-    });
-
-    // Register all nodes
-    graph.addNode("escalation_check", makeEscalationNode(apiKey));
-    graph.addNode("health_qa", makeHealthQANode(apiKey));
-    graph.addNode("lab_interpreter", makeLabInterpreterNode(apiKey));
-    graph.addNode("risk_assessment", makeRiskAssessmentNode(apiKey));
-
-    // Entry point: Route by intent if forced, otherwise run escalation check
-    graph.addConditionalEdges(
-        START,
-        (state: AgentState) => {
-            // If we have a forced intent that isn't general chat, we can skip chat escalation logic
-            if (state._intent && state._intent !== "health_qa") {
-                return state._intent;
-            }
-            return "escalation_check";
-        },
-        {
-            escalation_check: "escalation_check",
-            lab_result: "lab_interpreter",
-            risk_assessment: "risk_assessment",
-        } as any
-    );
-
-    // Conditional routing after escalation check
-    graph.addConditionalEdges(
-        "escalation_check" as any,
-        (state: AgentState) => {
-            // If emergency detected — short-circuit to END (answer already set by escalation node)
-            if (state.escalation?.isEmergency) return "emergency_end";
-
-            // Otherwise route by intent
-            return detectIntent(state.currQuestion, state._intent);
-        },
-        {
-            emergency_end: END,
-            health_qa: "health_qa",
-            lab_result: "lab_interpreter",
-            risk_assessment: "risk_assessment",
-        } as any
-    );
-
-    // All feature nodes go to END
+    // Entry point: simple linear graph
+    graph.addEdge(START, "health_qa" as any);
     graph.addEdge("health_qa" as any, END);
-    graph.addEdge("lab_interpreter" as any, END);
-    graph.addEdge("risk_assessment" as any, END);
 
     return graph.compile();
 }
 
-// ─────────────────────────────────────────────
-// PUBLIC RUNNER
-// ─────────────────────────────────────────────
 
-export type RunGraphOptions = {
+export function buildLabGraph(apiKey: string){
+    const graph = new StateGraph(AgentLabStateGraph)
+
+    graph.addNode("lab_qa", makeLabQANode(apiKey))
+
+    graph.addEdge(START, "lab_qa" as any)
+    graph.addEdge("lab_qa" as any, END)
+
+    return graph.compile()
+}
+
+export type RunChatGraphOptions = {
     message: string;
     chatHistory: CookieTurn[];
     userProfile?: UserProfile;
     toolResults?: ToolResult[];
     intent?: string;
+    apiKey: string;
+};
+
+export type RunLabGraphOptions = {
+    message: string;
+    userProfile?: UserProfile;
+    chatSessionId: string;
     apiKey: string;
 };
 
@@ -118,19 +54,17 @@ export type GraphResult = {
     category: string;
     chatHistory: CookieTurn[];
     labInterpretation: AgentState["labInterpretation"];
-    riskScores: AgentState["riskScores"];
-    escalation: AgentState["escalation"];
     toolRequests: ToolRequest[];
 };
 
-export async function runNimi(opts: RunGraphOptions): Promise<GraphResult> {
+export async function runChat(opts: RunChatGraphOptions): Promise<GraphResult> {
     const { message, chatHistory, userProfile, toolResults, intent, apiKey } = opts;
 
     const updatedHistory: CookieTurn[] = [...chatHistory, { user: message, bot: null }];
 
-    const graph = buildNimiGraph(apiKey);
+    const graph = buildQAGraph(apiKey);
 
-    const initialState: AgentState & { _intent?: string } = {
+    const initialState: AgentState = {
         messages: [],
         currQuestion: message,
         currAnswer: "",
@@ -138,30 +72,16 @@ export async function runNimi(opts: RunGraphOptions): Promise<GraphResult> {
         category: "",
         code: 0,
         labInterpretation: null,
-        riskScores: null,
-        escalation: null,
         toolRequests: [],
         toolResults: toolResults ?? [],
         userProfile: userProfile ?? null,
-        _intent: intent,
     };
 
     const finalState = await graph.invoke(initialState) as AgentState;
 
-    // If emergency — override answer with escalation message + auto-request nearby clinics
     let finalAnswer = finalState.currAnswer;
     let finalToolRequests = finalState.toolRequests ?? [];
-    if (finalState.escalation?.isEmergency) {
-        finalAnswer = `🚨 ${finalState.escalation.urgencyMessage}\n\n${finalState.escalation.nearestClinicPrompt}`;
-        // Always find nearby clinics during emergencies
-        const alreadyRequested = finalToolRequests.some(t => t.tool === 'nearby_clinics');
-        if (!alreadyRequested) {
-            finalToolRequests = [...finalToolRequests, {
-                tool: 'nearby_clinics' as const,
-                reason: 'Emergency detected — locating nearest healthcare facilities for the patient',
-            }];
-        }
-    }
+    
 
     return {
         response: finalAnswer,
@@ -169,8 +89,27 @@ export async function runNimi(opts: RunGraphOptions): Promise<GraphResult> {
         category: finalState.category,
         chatHistory: finalState.cookie,
         labInterpretation: finalState.labInterpretation,
-        riskScores: finalState.riskScores,
-        escalation: finalState.escalation,
         toolRequests: finalToolRequests,
     };
+}
+
+
+export async function runLab(opts: RunLabGraphOptions): Promise<AgentLabState> {
+    const { message, userProfile, chatSessionId, apiKey } = opts;
+
+    const graph = buildLabGraph(apiKey);
+
+    const initialState: AgentLabState = {
+        labReults: message,
+        biomarkers: [],
+        recommendations: [],
+        interpretation: "",
+        overallStatus: "NORMAL",
+        testName: "",
+        toolRequests: [],
+    };
+
+    const finalState = await graph.invoke(initialState) as AgentLabState;
+
+    return finalState;
 }

@@ -67,7 +67,7 @@ export type EscalationResult = {
 };
 
 export type ToolRequest = {
-    tool: "heart_rate_scan" | "nearby_clinics" | "gait_analysis" | "vision_analysis";
+    tool: "heart_rate_scan" | "nearby_clinics" | "gait_analysis" | "vision_analysis" | "lab_interpretation";
     reason: string;
 };
 

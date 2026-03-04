@@ -1,5 +1,7 @@
 
 import { BaseMessage } from "@langchain/core/messages";
+import type { AgentStateSchema, ToolResultSchema, ToolRequestSchema, AgentLabState, BiomarkerStatusSchema } from "../lib/schemas.js";
+import type z from "zod";
 
 // CONVERSATION
 
@@ -24,7 +26,7 @@ export type RiskScores = {
 
 // LAB RESULT
 
-export type BiomarkerStatus = "NORMAL" | "BORDERLINE" | "CONCERNING";
+export type BiomarkerStatus = z.infer<typeof BiomarkerStatusSchema>;
 
 export type ParsedBiomarker = {
   name: string;
@@ -56,36 +58,15 @@ export type EscalationResult = {
 
 // TOOL USE (AI ↔ Frontend)
 
-export type ToolRequest = {
-  tool: "heart_rate_scan" | "nearby_clinics" | "gait_analysis";
-  reason: string;
-};
+export type ToolRequest = z.infer<typeof ToolRequestSchema>
 
-export type ToolResult = {
-  tool: "heart_rate_scan" | "nearby_clinics" | "gait_analysis";
-  data: Record<string, any>;
-};
+export type ToolResult = z.infer<typeof ToolResultSchema>
 
 // MAIN AGENT STATE
+export type AgentState = z.infer<typeof AgentStateSchema>;
 
-export type AgentState = {
-  messages: BaseMessage[];
-  currQuestion: string;
-  currAnswer: string;
-  cookie: CookieTurn[];
-  category: string;
-  code: number;
-  labInterpretation: LabInterpretation | null;
-  riskScores: RiskScores | null;
-  escalation: EscalationResult | null;
-
-  toolRequests: ToolRequest[];
-  toolResults: ToolResult[];
-
-  userProfile: UserProfile | null;
-  _intent?: string;
-};
-
+export type AgentLabState = z.infer<typeof AgentLabState>;
+ 
 export type UserProfile = {
   age?: number;
   gender?: string;

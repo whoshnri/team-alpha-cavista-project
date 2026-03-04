@@ -3,7 +3,7 @@
 import { useState, useEffect, Suspense } from "react"
 import { useSearchParams, useRouter, usePathname } from "next/navigation"
 import { ChatWindow } from "@/components/chat/chat-window"
-import { LabInterpreter } from "@/components/lab/lab-interpreter"
+
 import { SettingsView } from "@/components/profile/settings-view"
 import { HealthProfileView } from "@/components/profile/health-profile-view"
 import { useProfile } from "@/hooks/use-profile"
@@ -55,7 +55,7 @@ function HomeContent() {
   const navItems = [
     { id: 'chat', label: 'Assistant', icon: MessageSquare, description: 'Health Q&A' },
     { id: 'profile_detailed', label: 'Health Profile', icon: Activity, description: 'Neural Baseline' },
-    { id: 'lab', label: 'Lab Reports', icon: FileText, description: 'Biometric Analysis' },
+
     { id: 'settings', label: 'Settings', icon: Settings, description: 'Session Configuration' },
   ]
 
@@ -100,7 +100,7 @@ function HomeContent() {
                     </p>
                   </div>
                   {activeTab === 'profile_detailed' && <HealthProfileView />}
-                  {activeTab === 'lab' && <LabInterpreter />}
+
                   {activeTab === 'settings' && <SettingsView />}
                 </div>
               </div>

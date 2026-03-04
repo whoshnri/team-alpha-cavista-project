@@ -9,6 +9,9 @@ import {
   Activity,
   AlertTriangle,
   Loader2,
+  CheckCircle2,
+  PenToolIcon,
+  Settings2Icon,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Message, ChatResponse, ToolRequest, PersistedMessage } from "@/types/api"
@@ -17,24 +20,42 @@ import { PermissionRequest, requestBrowserPermission } from "@/components/chat/p
 import { DownloadAppEmbedded } from "@/components/chat/download-app-embedded"
 import { useEndpoints } from "@/hooks/use-endpoints"
 import { renderToolPrompt } from "./renderTool"
+import { LabUploadInline } from "./lab-upload-inline"
 
-const METADATA_MARKER_RE = /<!--METADATA:([\s\S]*?)-->/
+const METADATA_MARKER_RE = /<!--(METADATA|RECOMMENDATIONS|OVERALL_STATUS):([\s\S]*?)-!>/g
 
 function embedMetadata(text: string, metadata: any): string {
   if (!metadata || Object.keys(metadata).length === 0) return text
-  return `${text}\n<!--METADATA:${JSON.stringify(metadata)}-->`
+  return `${text}\n<!--METADATA:${JSON.stringify(metadata)}-!>`
 }
 
 function parseMessageContent(raw: string): { content: string; metadata?: any } {
-  const match = raw.match(METADATA_MARKER_RE)
-  if (!match) return { content: raw }
+  const matches = [...raw.matchAll(METADATA_MARKER_RE)]
+  if (matches.length === 0) return { content: raw }
+
   const content = raw.replace(METADATA_MARKER_RE, '').trim()
-  try {
-    const metadata = JSON.parse(match[1])
-    return { metadata, content }
-  } catch {
-    return { content }
+  const metadata: any = {}
+
+  for (const match of matches) {
+    try {
+      const type = match[1]
+      const data = JSON.parse(match[2])
+
+      if (type === 'METADATA') {
+        Object.assign(metadata, data)
+      } else if (type === 'RECOMMENDATIONS') {
+        if (!metadata.lab) metadata.lab = {}
+        metadata.lab.recommendations = data
+      } else if (type === 'OVERALL_STATUS') {
+        if (!metadata.lab) metadata.lab = {}
+        metadata.lab.overallStatus = data
+      }
+    } catch (e) {
+      // Ignore parsing errors for individual blocks
+    }
   }
+
+  return { metadata: Object.keys(metadata).length > 0 ? metadata : undefined, content }
 }
 
 // UI message type with tool support
@@ -49,12 +70,13 @@ type UIMessage = {
     toolRequests?: ToolRequest[]
     clinics?: any[]  // clinic results rendered as cards
     downloadApp?: boolean
+    utilizedTool?: string
   }
 }
 
 // Tool execution state
 type ToolExecutionState = {
-  phase: 'prompt' | 'scanning' | 'sending' | 'idle'
+  phase: 'prompt' | 'executing' | 'scanning' | 'sending' | 'idle'
   toolRequest: ToolRequest | null
   originalMessage: string
   chatHistory: Message[]
@@ -106,7 +128,7 @@ export function ChatWindow({ sessionId, onNewSession }: ChatWindowProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
 
   const buildChatHistory = useCallback((): Message[] => {
-    // Strip <!--METADATA:{...}--> from bot content before sending to API
+    // Strip <!--METADATA:{...}-!> from bot content before sending to API
     const stripMetadata = (text: string) => {
       const idx = text.indexOf('<!--METADATA:')
       return idx === -1 ? text : text.substring(0, idx).trim()
@@ -181,6 +203,7 @@ export function ChatWindow({ sessionId, onNewSession }: ChatWindowProps) {
       try {
         const data = await getSessionMessages(sessionId)
         if (data.success && data.session) {
+          const executedTools = new Set<string>()
           const loaded: UIMessage[] = []
 
           for (const msg of data.session.messages) {
@@ -190,11 +213,13 @@ export function ChatWindow({ sessionId, onNewSession }: ChatWindowProps) {
               const tool = rawMsg.tool || rawMsg.content?.tool
               const toolData = rawMsg.data || rawMsg.content?.data
 
+              if (tool) executedTools.add(tool)
+
               if (tool === 'nearby_clinics' && toolData?.clinics?.length > 0) {
                 loaded.push({
                   role: 'bot',
                   content: `I found **${toolData.clinics.length} healthcare facilities** near you.`,
-                  metadata: { clinics: toolData.clinics }
+                  metadata: { clinics: toolData.clinics, utilizedTool: 'nearby_clinics' }
                 })
               }
               // Other tool results (heart_rate_scan, gait_analysis, etc.) can be handled here
@@ -203,6 +228,13 @@ export function ChatWindow({ sessionId, onNewSession }: ChatWindowProps) {
 
             // Handle regular user/assistant messages
             const { content, metadata } = parseMessageContent(msg.content)
+
+            // If a past bot message has lab results in its metadata, we consider the tool executed
+            if (msg.sender !== 'USER' && metadata?.lab) {
+              executedTools.add('lab_interpretation')
+              metadata.utilizedTool = 'lab_interpretation'
+            }
+
             loaded.push({
               role: msg.sender === 'USER' ? 'user' : 'bot',
               content,
@@ -210,27 +242,42 @@ export function ChatWindow({ sessionId, onNewSession }: ChatWindowProps) {
             })
           }
 
-          // Find the last bot message index that has toolRequests
-          const lastBotWithToolIdx = loaded.reduce((acc, m, i) =>
-            m.role === 'bot' && m.metadata?.toolRequests?.length ? i : acc, -1)
+          // Strip toolRequests from all messages if they have already been executed
+          const finalMessages = loaded.map((m) => {
+            if (m.role === 'bot' && (m.metadata as any)?.toolRequests?.length) {
+              const unresolvedTools = (m.metadata as any).toolRequests.filter((req: any) => !executedTools.has(req.tool))
+              const { toolRequests, ...restMeta } = (m.metadata as any)
 
-          // Strip toolRequests from all bot messages EXCEPT the last one
-          const finalMessages = loaded.map((m, i) => {
-            if (m.role === 'bot' && m.metadata?.toolRequests?.length && i !== lastBotWithToolIdx) {
-              const { toolRequests, ...restMeta } = m.metadata
+              if (unresolvedTools.length > 0) {
+                return { ...m, metadata: { ...restMeta, toolRequests: unresolvedTools } }
+              } else {
+                return { ...m, metadata: Object.keys(restMeta).length > 0 ? restMeta : undefined }
+              }
+            }
+            return m
+          })
+
+          // Find the last bot message index that still has unresolved toolRequests
+          const lastBotWithToolIdx = finalMessages.reduce((acc, m, i) =>
+            m.role === 'bot' && (m.metadata as any)?.toolRequests?.length ? i : acc, -1)
+
+          // We explicitly keep unresolved toolRequests ONLY on the last message
+          const veryFinalMessages = finalMessages.map((m, i) => {
+            if (m.role === 'bot' && (m.metadata as any)?.toolRequests?.length && i !== lastBotWithToolIdx) {
+              const { toolRequests, ...restMeta } = (m.metadata as any)
               return { ...m, metadata: Object.keys(restMeta).length > 0 ? restMeta : undefined }
             }
             return m
           })
 
-          setMessages(finalMessages.length > 0 ? finalMessages : [welcomeMessage])
+          setMessages(veryFinalMessages.length > 0 ? veryFinalMessages : [welcomeMessage])
 
           // Re-trigger tool prompt for the last bot message with pending toolRequests
           if (lastBotWithToolIdx >= 0) {
-            const lastToolMsg = loaded[lastBotWithToolIdx]
-            const lastUserMsg = loaded.slice(0, lastBotWithToolIdx).reverse().find(m => m.role === 'user')
+            const lastToolMsg = veryFinalMessages[lastBotWithToolIdx]
+            const lastUserMsg = veryFinalMessages.slice(0, lastBotWithToolIdx).reverse().find(m => m.role === 'user')
             processToolRequestsRef.current?.(
-              lastToolMsg.metadata!.toolRequests,
+              (lastToolMsg.metadata as any)!.toolRequests,
               lastUserMsg?.content || '',
               []
             )
@@ -311,7 +358,7 @@ export function ChatWindow({ sessionId, onNewSession }: ChatWindowProps) {
 
       if (data.success && data.clinics?.length > 0) {
         const displayText = `I found **${data.clinics.length} healthcare facilities** near you. Here are the closest options:`
-        const metadata = { clinics: data.clinics }
+        const metadata = { clinics: data.clinics, utilizedTool: 'nearby_clinics' }
         const fullContent = embedMetadata(displayText, metadata)
 
         // Remove the "finding clinics" message and replace with results
@@ -366,6 +413,8 @@ export function ChatWindow({ sessionId, onNewSession }: ChatWindowProps) {
           content: appMsg,
           metadata
         }])
+      } else if (req.tool === 'lab_interpretation') {
+        setToolState({ phase: 'prompt', toolRequest: req, originalMessage, chatHistory })
       }
     }
   }, [user])
@@ -414,6 +463,8 @@ export function ChatWindow({ sessionId, onNewSession }: ChatWindowProps) {
     if (toolState.toolRequest?.tool === 'nearby_clinics') {
       executeClinicSearch(toolState.originalMessage, toolState.chatHistory)
       setToolState({ phase: 'idle', toolRequest: null, originalMessage: '', chatHistory: [] })
+    } else if (toolState.toolRequest?.tool === 'lab_interpretation') {
+      setToolState(prev => ({ ...prev, phase: 'executing' }))
     }
   }
 
@@ -487,7 +538,9 @@ export function ChatWindow({ sessionId, onNewSession }: ChatWindowProps) {
                 )}>
                   <div className="whitespace-pre-wrap" dangerouslySetInnerHTML={{
                     __html: msg.content
-                      .replace(/<!--METADATA:[\s\S]*?-->/g, '')
+                      .replace(/<!--METADATA:[\s\S]*?-!>/g, '')
+                      .replace(/<!--RECOMMENDATIONS:[\s\S]*?-!>/g, '')
+                      .replace(/<!--OVERALL_STATUS:[\s\S]*?-!>/g, '')
                       .trim()
                       .replace(/\*\*(.*?)\*\*/g, '<strong class="text-text-primary font-semibold">$1</strong>')
                       .replace(/\*(.*?)\*/g, '<em>$1</em>')
@@ -495,16 +548,52 @@ export function ChatWindow({ sessionId, onNewSession }: ChatWindowProps) {
                       .replace(/^## (.*$)/gm, '<h2 class="text-text-primary font-bold text-xl tracking-tight mt-8 mb-3">$1</h2>')
                       .replace(/^- (.*$)/gm, '<span class="block pl-4 border-l border-border my-2">$1</span>')
                   }} />
+                  {msg.metadata?.utilizedTool && (
+                    <div className="flex flex-wrap gap-2 mt-3">
+                      <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-accent-blue/10 border border-accent-blue">
+                        <Settings2Icon className="h-4 w-4 text-accent-blue" />
+                        <span className="text-xs font-medium text-accent-blue uppercase tracking-wider">
+                          Utilized {msg.metadata.utilizedTool.replace('_', ' ')} Tool
+                        </span>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* Lab interpretation card */}
                 {msg.metadata?.lab && (
-                  <div className="mt-2 w-full card">
-                    <div className="flex items-center gap-2 mb-4">
-                      <FileText className="h-4 w-4 text-text-primary" />
-                      <span className="section-label">Lab Interpretation</span>
+                  <div className="mt-2 w-full card border-l-4 border-l-accent-blue">
+                    <div className="flex items-center justify-between mb-4">
+                      <div className="flex items-center gap-2">
+                        <FileText className="h-5 w-5 text-accent-blue" />
+                        <span className="text-sm font-bold text-text-primary">Lab Interpretation</span>
+                      </div>
+                      {msg.metadata.lab.overallStatus && (
+                        <span className={cn(
+                          "text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-full",
+                          msg.metadata.lab.overallStatus === 'NORMAL' ? "bg-green-500/10 text-green-500 border border-green-500/20" :
+                            msg.metadata.lab.overallStatus === 'BORDERLINE' ? "bg-yellow-500/10 text-yellow-500 border border-yellow-500/20" :
+                              "bg-red-500/10 text-red-500 border border-red-500/20"
+                        )}>
+                          {msg.metadata.lab.overallStatus}
+                        </span>
+                      )}
                     </div>
-                    <p className="text-sm text-text-secondary leading-relaxed">{msg.metadata.lab.summary || msg.metadata.lab.plainSummary}</p>
+                    <p className="text-sm text-text-secondary leading-relaxed mb-4">{msg.metadata.lab.summary || msg.metadata.lab.plainSummary || msg.metadata.lab.interpretation}</p>
+
+                    {msg.metadata.lab.recommendations && msg.metadata.lab.recommendations.length > 0 && (
+                      <div className="space-y-4 pt-4 border-t border-border">
+                        <p className="text-sm text-text-muted uppercase tracking-tight">Recommendations</p>
+                        <ul className="space-y-3">
+                          {msg.metadata.lab.recommendations.map((rec: string, idx: number) => (
+                            <li key={idx} className="flex gap-3 items-baseline text-sm text-text-secondary leading-relaxed">
+                              <span className="h-5 w-5 shrink-0 rounded-full border border-border flex items-center justify-center text-[8px] font-bold text-text-primary">{idx + 1}</span>
+                              {rec}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -589,6 +678,38 @@ export function ChatWindow({ sessionId, onNewSession }: ChatWindowProps) {
               handleDeclineToolUse,
               () => { }, // No image upload handler needed anymore
               null // No file input ref needed
+            )}
+
+            {/* Inline Lab Upload (Replaces Modal) */}
+            {toolState.phase === 'executing' && toolState.toolRequest?.tool === 'lab_interpretation' && (
+              <div className="mt-2 w-full animate-in fade-in slide-in-from-bottom-2 duration-300">
+                <LabUploadInline
+                  onClose={() => setToolState({ phase: 'idle', toolRequest: null, originalMessage: '', chatHistory: [] })}
+                  onSuccess={(result) => {
+                    const stripMetadata = (text: string) => {
+                      return text
+                        .replace(/<!--METADATA:[\s\S]*?-!>/g, '')
+                        .replace(/<!--RECOMMENDATIONS:[\s\S]*?-!>/g, '')
+                        .replace(/<!--OVERALL_STATUS:[\s\S]*?-!>/g, '')
+                        .trim();
+                    };
+                    const botMsg: UIMessage = {
+                      role: 'bot',
+                      content: stripMetadata(result.result || "I have analyzed your lab results."),
+                      metadata: {
+                        lab: {
+                          interpretation: stripMetadata(result.result || "I have analyzed your lab results."),
+                          ...result
+                        },
+                        utilizedTool: 'lab_interpretation'
+                      }
+                    }
+                    setMessages(prev => [...prev, botMsg])
+                    setToolState({ phase: 'idle', toolRequest: null, originalMessage: '', chatHistory: [] })
+                  }}
+                  sessionId={sessionId!}
+                />
+              </div>
             )}
 
             {/* Reusable permission request card */}
