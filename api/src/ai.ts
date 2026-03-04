@@ -6,7 +6,6 @@ import { zValidator } from "@hono/zod-validator";
 import type { CookieTurn, ToolResult } from "./ai/types.js";
 import { prisma } from "../prisma/client.js"
 import { recalibrateHealthProfile } from "./lib/recalibrate.js";
-import { sseManager } from "./sse.js";
 import { validateSession } from "./lib/sessionValidation.js";
 import { ChatBodySchema, LabBodySchema } from "./lib/schemas.js";
 import { persistChat } from "./lib/persistChat.js";

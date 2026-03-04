@@ -2,6 +2,8 @@
 const EMA_WEIGHT = 0.2; // how much new data influences baseline
 const MIN_READINGS_FOR_CONFIDENCE = 10;
 
+import { upsertTrends } from './trends.js';
+
 function exponentialMovingAverage(current: number | null, newValue: number): number {
     if (current === null) return newValue;
     return (1 - EMA_WEIGHT) * (current ?? 0) + EMA_WEIGHT * newValue;
@@ -35,7 +37,6 @@ export type recalibrateData = {
     heartRate?: number | null,
     hrv?: number | null,
     respiratoryRate?: number | null,
-    gaitRegularity?: number | null,
     fatigueIndex?: number | null,
     stepsEstimated?: number | null,
     estimatedCalories?: number | null,
@@ -85,13 +86,6 @@ export async function recalibrateHealthProfile(
             current.respiratoryBase = exponentialMovingAverage(current.respiratoryBase, point.respiratoryRate);
             current.respiratoryStdDev = updateStdDev(current.respiratoryStdDev, current.respiratoryBase || point.respiratoryRate, point.respiratoryRate);
             metricsUpdated.add('RespiratoryRate');
-        }
-
-        if (point.gaitRegularity) {
-            current.gaitRegularityBase = exponentialMovingAverage(current.gaitRegularityBase, point.gaitRegularity);
-            current.gaitRegularityStdDev = updateStdDev(current.gaitRegularityStdDev, current.gaitRegularityBase || point.gaitRegularity, point.gaitRegularity);
-            current.gaitTrend = deriveTrend(current.gaitRegularityBase, point.gaitRegularity, current.gaitRegularityStdDev);
-            metricsUpdated.add('GaitRegularity');
         }
 
         if (point.fatigueIndex !== null && point.fatigueIndex !== undefined) {
@@ -150,8 +144,6 @@ export async function recalibrateHealthProfile(
         hrReadingCount: current.hrReadingCount,
         hrvBaseline: current.hrvBaseline,
         hrvStdDev: current.hrvStdDev,
-        gaitRegularityBase: current.gaitRegularityBase,
-        gaitRegularityStdDev: current.gaitRegularityStdDev,
         fatigueIndexBase: current.fatigueIndexBase,
         stepsPerWindowBase: current.stepsPerWindowBase,
         respiratoryBase: current.respiratoryBase,
@@ -163,7 +155,6 @@ export async function recalibrateHealthProfile(
         elevatedHRRisk: risks.elevatedHRRisk,
         lowHRVRisk: risks.lowHRVRisk,
         sedentaryRisk: risks.sedentaryRisk,
-        gaitTrend: current.gaitTrend,
         hrTrend: current.hrTrend,
         hrvTrend: current.hrvTrend,
         lastRecalibrated: new Date(),
@@ -173,10 +164,18 @@ export async function recalibrateHealthProfile(
     };
 
     try {
-        return await prisma.healthProfile.update({
+        const updatedProfile = await prisma.healthProfile.update({
             where: { id: profile.id },
             data: updateData
         });
+
+        // Fire and forget cache building. 
+        // This will only work if the Redis connection is active in `./redis.ts`
+        upsertTrends(userId, profile, updatedProfile).catch(err => {
+            console.error(`[Trends] Failed to populate cache after recalibrate:`, err);
+        });
+
+        return updatedProfile;
     } catch (err) {
         console.error(`[HealthProfile Error] Update failed for ${userId} (ID: ${profile.id}):`, err);
         throw err;

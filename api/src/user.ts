@@ -3,6 +3,9 @@ import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
 import { prisma } from "../prisma/client.js";
 import { jwt } from "hono/jwt";
+import { redis, getRedisStatus } from "./lib/redis.js";
+import { upsertTrends } from "./lib/trends.js";
+import { ChatGoogleGenerativeAI } from "@langchain/google-genai";
 
 const user = new Hono();
 const JWT_SECRET = process.env.JWT_SECRET || "nimi_super_secret_key_123!";
@@ -244,6 +247,159 @@ user.get("/health-profile", async (c) => {
     }
 });
 
+
+user.get("/trends", async (c) => {
+    const payload = c.get("jwtPayload");
+    const userId = payload.userId;
+    const fresh = c.req.query("fresh") === 'true';
+
+    try {
+        if (!getRedisStatus()) {
+            return c.json({ success: false, error: "Trends cache unavailable" }, 503);
+        }
+
+        const trendKey = `nimi:trends:${userId}`;
+
+        if (fresh) {
+            console.log(`[Trends] Rebuilding cache for user ${userId}`);
+            await redis.del(trendKey);
+            const profile = await prisma.healthProfile.findUnique({
+                where: { userId }
+            });
+
+            if (profile) {
+                // If fresh, set before and after to same profile to initialize skewed stats at 0
+                await upsertTrends(userId, profile, profile, true);
+            }
+        }
+
+        const rawCache = await redis.hgetall(trendKey);
+        const trends = Object.values(rawCache).map(v => JSON.parse(v));
+
+        if (trends.length === 0 && !fresh) {
+            // First time loading - build cache auto
+            const profile = await prisma.healthProfile.findUnique({
+                where: { userId }
+            });
+            if (profile) {
+                await upsertTrends(userId, profile, profile, true);
+            }
+            const updatedCache = await redis.hgetall(trendKey);
+            const initialTrends = Object.values(updatedCache).map(v => JSON.parse(v));
+
+            const anomalous = initialTrends.filter((t: any) => t.isAnomalous);
+            const normal = initialTrends.filter((t: any) => !t.isAnomalous);
+
+            return c.json({ success: true, trends: initialTrends, anomalous, normal });
+        }
+
+        const anomalous = trends.filter((t: any) => t.isAnomalous);
+        const normal = trends.filter((t: any) => !t.isAnomalous);
+
+        return c.json({ success: true, trends, anomalous, normal });
+
+    } catch (err) {
+        console.error("[Trends API Error]", err);
+        return c.json({ success: false, error: "Failed to fetch trends" }, 500);
+    }
+});
+
+user.get("/vital-insight", async (c) => {
+    const payload = c.get("jwtPayload");
+    const userId = payload.userId;
+    const vitalKey = c.req.query("vital_key");
+    const fresh = c.req.query("fresh") === 'true';
+
+    if (!vitalKey) return c.json({ success: false, error: "vital_key is required" }, 400);
+
+    try {
+        if (!getRedisStatus()) {
+            return c.json({ success: false, error: "Redis cache unavailable" }, 503);
+        }
+
+        const cacheKey = `nimi:insight:${userId}:${vitalKey}`;
+
+        if (!fresh) {
+            const cachedInsight = await redis.get(cacheKey);
+            if (cachedInsight) {
+                return c.json({ success: true, insight: cachedInsight, cached: true });
+            }
+        }
+
+        // Need to build the insight
+        const profile = await prisma.healthProfile.findUnique({
+            where: { userId }
+        });
+
+        if (!profile) return c.json({ success: false, error: "Profile not found" }, 404);
+
+        const trendKey = `nimi:trends:${userId}`;
+        const rawCache = await redis.hgetall(trendKey);
+
+        let targetTrendStr = rawCache[vitalKey];
+        if (!targetTrendStr && fresh) {
+            await upsertTrends(userId, profile, profile, false);
+            const freshRawCache = await redis.hgetall(trendKey);
+            targetTrendStr = freshRawCache[vitalKey];
+        }
+
+        if (!targetTrendStr) return c.json({ success: false, error: "Trend data not found for vital" }, 404);
+
+        const targetTrend = JSON.parse(targetTrendStr);
+        const allTrends = Object.values(rawCache).map(v => JSON.parse(v));
+        const anomalousTrends = allTrends.filter(t => t.isAnomalous);
+
+        const prompt = `
+You are Nimi, an expert clinical AI analyzing a specific health vital trend for a user.
+The user is looking for an insight into their ${targetTrend.label}.
+
+Target Vital Data:
+- Baseline: ${targetTrend.baseline.toFixed(1)} ${targetTrend.unit}
+- Current: ${targetTrend.current.toFixed(1)} ${targetTrend.unit}
+- Change: ${targetTrend.skew.toFixed(1)} (${targetTrend.skewPercent.toFixed(1)}%)
+- Status: ${targetTrend.isAnomalous ? 'ANOMALOUS (High Variation)' : 'NORMAL'}
+- Direction: ${targetTrend.direction} (${targetTrend.trend})
+
+Current Health Profile Context:
+- Height: ${profile.heightCm}cm, Weight: ${profile.weightKg}kg
+- Existing Conditions: ${(profile.existingConditions as any)?.join(', ') || 'None'}
+- Age: ${(profile as any).age || 'Not provided'}
+- Dominant Activity: ${profile.dominantActivity}
+- Other Anomalous Vitals right now: ${anomalousTrends.map(t => t.label).join(', ') || 'None'}
+
+Generate a structured markdown insight for this specific vital shift. It must contain exactly these five sections with these exact headers:
+### What it means
+(Plain language explanation of this specific shift)
+### Why it matters
+(Clinical significance of this metric and why this change is relevant)
+### Connected signals
+(How this might relate to their existing conditions, activity, or other anomalous vitals)
+### What to do
+(Specific, highly actionable steps for the next 7 days. Use bullet points)
+### Risk level
+(LOW, MODERATE, or HIGH, followed by a brief 1-sentence justification. Never suggest consulting a doctor UNLESS risk is HIGH)
+
+Keep the entire response under 300 words. Be direct, authoritative but empathetic.
+        `;
+
+        const llm = new ChatGoogleGenerativeAI({
+            model: "gemini-2.5-flash",
+            temperature: 0.2,
+            apiKey: process.env.GROQ_API_KEY, // We'll assume the environment uses this var for generic AI keys
+        });
+
+        const responseMsg = await llm.invoke(prompt);
+        const insightResult = responseMsg.content.toString().trim();
+
+        await redis.set(cacheKey, insightResult, 'EX', 7 * 24 * 60 * 60);
+
+        return c.json({ success: true, insight: insightResult, cached: false });
+
+    } catch (err) {
+        console.error("[Vital Insight Error]", err);
+        return c.json({ success: false, error: "Failed to generate AI insight" }, 500);
+    }
+});
 
 user.get("/health-profile/detailed", async (c) => {
     const payload = c.get("jwtPayload");
