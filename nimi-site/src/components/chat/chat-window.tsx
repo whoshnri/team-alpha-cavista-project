@@ -21,6 +21,7 @@ import { DownloadAppEmbedded } from "@/components/chat/download-app-embedded"
 import { useEndpoints } from "@/hooks/use-endpoints"
 import { renderToolPrompt } from "./renderTool"
 import { LabUploadInline } from "./lab-upload-inline"
+import { Textarea } from "../ui/textarea"
 
 const METADATA_MARKER_RE = /<!--(METADATA|RECOMMENDATIONS|OVERALL_STATUS):([\s\S]*?)-!>/g
 
@@ -434,6 +435,9 @@ export function ChatWindow({ sessionId, onNewSession }: ChatWindowProps) {
     setMessages(prev => [...prev, userMsg])
     const currentInput = input
     setInput("")
+    // Reset textarea height
+    const textarea = document.querySelector('textarea')
+    if (textarea) textarea.style.height = 'auto'
     setLoading(true)
 
     try {
@@ -490,7 +494,7 @@ export function ChatWindow({ sessionId, onNewSession }: ChatWindowProps) {
       <div ref={scrollRef} className={cn(
         "flex-1 overflow-y-auto px-6 py-6 scrollbar-hide md:px-0",
         isEmpty ? "flex items-center justify-center pt-0" : "pb-24 space-y-8"
-      )}>
+      )} >
         {loadingHistory ? (
           <div className="flex flex-col items-center justify-center h-full gap-4">
             <Loader2 className="w-8 h-8 text-accent-blue animate-spin" />
@@ -502,12 +506,18 @@ export function ChatWindow({ sessionId, onNewSession }: ChatWindowProps) {
               How are you feeling <span className="text-accent-blue">{user?.fullName?.split(' ')[0] || 'friend'}</span> ?
             </h1>
 
-            <div className="w-full relative group">
-              <input
-                className="input py-4 px-6 text-base font-sans rounded-lg border-border/60 focus:border-accent-blue bg-surface/50 shadow-xl transition-all"
+            <div className="w-full relative group" >
+              <Textarea
+                className="input py-4 px-6 text-base font-sans rounded-lg border-border/60 focus:border-accent-blue bg-surface/50 transition-all resize-none overflow-y-auto duration-300 pr-16"
                 placeholder="Describe your symptoms or ask a health question..."
                 value={input}
-                onChange={(e) => setInput(e.target.value)}
+                rows={1}
+                style={{ maxHeight: '160px', scrollbarWidth: "none" }}
+                onChange={(e) => {
+                  setInput(e.target.value)
+                  e.target.style.height = 'auto'
+                  e.target.style.height = `${Math.min(e.target.scrollHeight, 160)}px`
+                }}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend() }
                 }}
@@ -515,7 +525,7 @@ export function ChatWindow({ sessionId, onNewSession }: ChatWindowProps) {
               <button
                 onClick={() => handleSend()}
                 disabled={loading || !input.trim()}
-                className="absolute right-3 top-1/2 -translate-y-1/2 btn-primary p-2.5 h-10 w-10 flex items-center justify-center rounded-lg shadow-lg hover:shadow-accent-blue/20 transition-all"
+                className="absolute right-3 bottom-1.5 btn-primary p-2.5 h-10 w-10 flex items-center justify-center rounded-lg shadow-lg hover:shadow-accent-blue/20 transition-all"
               >
                 <Send className="w-4 h-4" />
               </button>
@@ -747,11 +757,17 @@ export function ChatWindow({ sessionId, onNewSession }: ChatWindowProps) {
       {!isEmpty && (
         <div className="flex flex-col gap-2 p-4 bg-background/80 backdrop-blur-md sticky bottom-0 z-10 border-t border-border">
           <div className="max-w-[640px] mx-auto w-full relative flex items-center gap-2">
-            <input
-              className="input py-3 px-4 text-sm font-sans rounded-lg border-border/60 focus:border-accent-blue/50 bg-surface/50 shadow-sm"
-              placeholder="How can Nimi help you today?"
+            <Textarea
+              className="input py-4 px-6 text-base font-sans rounded-lg border-border/60 focus:border-accent-blue bg-surface/50 transition-all resize-none overflow-y-auto duration-300 pr-16"
+              placeholder="Describe your symptoms or ask a health question..."
               value={input}
-              onChange={(e) => setInput(e.target.value)}
+              rows={1}
+              style={{ maxHeight: '160px', scrollbarWidth: "none" }}
+              onChange={(e) => {
+                setInput(e.target.value)
+                e.target.style.height = 'auto'
+                e.target.style.height = `${Math.min(e.target.scrollHeight, 160)}px`
+              }}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend() }
               }}
@@ -759,7 +775,7 @@ export function ChatWindow({ sessionId, onNewSession }: ChatWindowProps) {
             <button
               onClick={() => handleSend()}
               disabled={loading || !input.trim()}
-              className="absolute right-2 btn-primary p-2 h-9 w-9 flex items-center justify-center rounded-lg shadow-lg hover:shadow-accent-blue/20 transition-all"
+              className="absolute right-3 bottom-1.5 btn-primary p-2.5 h-10 w-10 flex items-center justify-center rounded-lg shadow-lg hover:shadow-accent-blue/20 transition-all"
             >
               <Send className="w-4 h-4" />
             </button>
